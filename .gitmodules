@@ -1,0 +1,3 @@
+[submodule "refs/core-rs"]
+	path = refs/core-rs
+	url = git@github.com:omnius-labs/core-rs.git

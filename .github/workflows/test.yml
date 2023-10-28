@@ -1,0 +1,74 @@
+name: test
+
+on:
+  push:
+    branches:
+      - "main"
+      - "release/*"
+    paths:
+      - "**"
+      - "!/docs/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Checkout submodule
+        uses: actions/checkout@v4
+        with:
+          repository: omnius-labs/core-rs
+          path: refs/core-rs
+          ssh-key: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+          persist-credentials: true
+      - name: Update submodule
+        run: git submodule update --init
+
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@1.72.1
+        with:
+          components: clippy, rustfmt
+      - name: Setup cargo make
+        uses: davidB/rust-cargo-make@v1
+        with:
+          version: latest
+      - name: Setup rust cache
+        uses: Swatinem/rust-cache@v2.7.0
+        with:
+          shared-key: lint
+      - name: Lint
+        run: cargo make lint
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Checkout submodule
+        uses: actions/checkout@v4
+        with:
+          repository: omnius-labs/core-rs
+          path: refs/core-rs
+          ssh-key: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+          persist-credentials: true
+      - name: Update submodule
+        run: git submodule update --init
+
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@1.72.1
+        with:
+          components: clippy, rustfmt
+      - name: Setup cargo make
+        uses: davidB/rust-cargo-make@v1
+        with:
+          version: latest
+      - name: Setup rust cache
+        uses: Swatinem/rust-cache@v2.7.0
+        with:
+          shared-key: test
+      - name: Test
+        run: cargo test --features "stable-test"

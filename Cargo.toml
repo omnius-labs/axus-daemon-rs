@@ -1,0 +1,70 @@
+[workspace]
+members = [
+    "./refs/core-rs/modules/base",
+    "./refs/core-rs/modules/testkit",
+
+    "./modules/api",
+    "./modules/engine",
+]
+exclude = ["refs/core-rs"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+authors = ["Lyrise <lyrise1984@gmail.com>"]
+version = "0.1.0"
+
+[workspace.dependencies]
+core-base = { path = "./refs/core-rs/modules/base" }
+core-testkit = { path = "./refs/core-rs/modules/testkit" }
+
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+reqwest = { version = "0.11.18", features = ["json"] }
+anyhow = { version = "1.0.66", features = ["backtrace"] }
+async-trait = "0.1.63"
+axum = { version = "0.6.3", features = ["macros", "headers", "ws"] }
+axum-extra = { version = "0.4.2", features = [
+    "cookie",
+    "cookie-signed",
+    "cookie-private",
+] }
+chrono = "0.4.23"
+config = "0.13.3"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0.91"
+testcontainers = "0.14.0"
+tokio = { version = "1.23.0", features = ["full"] }
+tokio-postgres = { version = "0.7.7", features = ["with-chrono-0_4"] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
+uuid = { version = "1.2.2", features = ["serde", "v4"] }
+sqlx = { version = "0.6.2", features = [
+    "postgres",
+    "chrono",
+    "json",
+    "macros",
+    "runtime-tokio-rustls",
+] }
+tower-http = { version = "0.3.5", features = ["cors"] }
+utoipa = "3.0.0"
+utoipa-swagger-ui = { version = "3.0.2", features = ["axum"] }
+ring = "0.16.20"
+hex = "0.4.3"
+vergen = { version = "7", default-features = false, features = [
+    "build",
+    "rustc",
+    "git",
+] }
+urlencoding = "2.1.2"
+hyper = "0.14"
+tower = "0.4"
+thiserror = "1.0.40"
+jsonwebtoken = "8.3.0"
+validator = { version = "0.16", features = ["derive"] }
+headers = "0.3.8"
+once_cell = "1.17.1"
+base64 = "0.21.2"
+futures = "0.3.28"
+futures-util = "0.3.28"
+serial_test = "2.0.0"

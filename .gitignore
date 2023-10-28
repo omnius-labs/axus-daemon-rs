@@ -1,0 +1,9 @@
+/target
+/tmp
+/bin
+
+# Visual Studio Code
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/settings.json

@@ -1,0 +1,26 @@
+[tasks.fmt-check]
+workspace = false
+install_crate = "rustfmt"
+args = ["fmt", "--all", "--", "--check"]
+command = "cargo"
+
+[tasks.clippy]
+workspace = false
+install_crate = "clippy"
+command = "cargo"
+args = ["clippy", "--", "-D", "warnings"]
+
+[tasks.lint]
+workspace = false
+dependencies = ["fmt-check", "clippy"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+dependencies = ["lint"]
+
+[tasks.watch]
+workspace = false
+command = "cargo"
+install_crate = "watch"
+args = ["watch", "-x", "run --bin opxs-api"]
