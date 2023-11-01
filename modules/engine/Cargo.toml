@@ -39,6 +39,10 @@ base64 = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 serial_test = { workspace = true }
+rupnp = { workspace = true }
+tokio-util = { workspace = true }
+pin-utils = { workspace = true }
+local-ip-address = "0.5.6"
 
 [dev-dependencies]
 testcontainers = { workspace = true }
