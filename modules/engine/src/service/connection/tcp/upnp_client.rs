@@ -15,65 +15,11 @@ pub struct UpnpClient;
 
 impl UpnpClient {
     pub async fn add_port_mapping(protocol: &str, external_port: i32, internal_port: i32, description: &str) -> anyhow::Result<()> {
-        let internal_ip = local_ip_address::local_ip()?;
+        let internal_ip = local_ip_address::local_ip()?.to_string();
         for urn in URNS.iter() {
-            let res = Self::add_port_mapping_sub(urn, protocol, external_port, internal_port, internal_ip.to_string().as_str(), description).await;
-            if res.is_err() {
-                continue;
-            }
-            return Ok(());
-        }
-
-        anyhow::bail!("failed to add port mapping");
-    }
-
-    pub async fn delete_port_mapping(protocol: &str, external_port: i32) -> anyhow::Result<()> {
-        for urn in URNS.iter() {
-            let res = Self::delete_port_mapping_sub(urn, protocol, external_port).await;
-            if res.is_err() {
-                continue;
-            }
-            return Ok(());
-        }
-
-        anyhow::bail!("failed to delete port mapping");
-    }
-
-    pub async fn get_generic_port_mapping_entry(index: i32) -> anyhow::Result<HashMap<String, String>> {
-        for urn in URNS.iter() {
-            let res = Self::get_generic_port_mapping_entry_sub(urn, index).await;
-            if res.is_err() {
-                continue;
-            }
-            return Ok(res.unwrap());
-        }
-
-        anyhow::bail!("failed to get generic port mapping");
-    }
-
-    pub async fn get_external_ip_address() -> anyhow::Result<HashMap<String, String>> {
-        for urn in URNS.iter() {
-            let res = Self::get_external_ip_address_sub(urn).await;
-            if res.is_err() {
-                continue;
-            }
-            return Ok(res.unwrap());
-        }
-
-        anyhow::bail!("failed to get external ip address");
-    }
-
-    async fn add_port_mapping_sub(
-        urn: &URN,
-        protocol: &str,
-        external_port: i32,
-        internal_port: i32,
-        internal_ip: &str,
-        description: &str,
-    ) -> anyhow::Result<()> {
-        let name = "AddPortMapping";
-        let args = format!(
-            r#"\
+            let name = "AddPortMapping";
+            let args = format!(
+                r#"\
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body>
  <u:{name} xmlns:u="{urn}">
@@ -89,17 +35,23 @@ impl UpnpClient {
 </s:Body>
 /s:Envelope>
 "#
-        );
+            );
 
-        Self::action(urn, name, args.as_str()).await?;
+            let res = Self::action(urn, name, args.as_str()).await;
+            if res.is_err() {
+                continue;
+            }
+            return Ok(());
+        }
 
-        Ok(())
+        anyhow::bail!("failed to add port mapping");
     }
 
-    async fn delete_port_mapping_sub(urn: &URN, protocol: &str, external_port: i32) -> anyhow::Result<()> {
-        let name = "DeletePortMapping";
-        let args = format!(
-            r#"\
+    pub async fn delete_port_mapping(protocol: &str, external_port: i32) -> anyhow::Result<()> {
+        for urn in URNS.iter() {
+            let name = "DeletePortMapping";
+            let args = format!(
+                r#"\
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body>
  <u:{name} xmlns:u="{urn}">
@@ -110,17 +62,23 @@ impl UpnpClient {
 </s:Body>
 /s:Envelope>
 "#
-        );
+            );
 
-        Self::action(urn, name, args.as_str()).await?;
+            let res = Self::action(urn, name, args.as_str()).await;
+            if res.is_err() {
+                continue;
+            }
+            return Ok(());
+        }
 
-        Ok(())
+        anyhow::bail!("failed to delete port mapping");
     }
 
-    async fn get_generic_port_mapping_entry_sub(urn: &URN, index: i32) -> anyhow::Result<HashMap<String, String>> {
-        let name = "GetGenericPortMappingEntry";
-        let args = format!(
-            r#"\
+    pub async fn get_generic_port_mapping_entry(index: i32) -> anyhow::Result<HashMap<String, String>> {
+        for urn in URNS.iter() {
+            let name = "GetGenericPortMappingEntry";
+            let args = format!(
+                r#"\
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body>
   <u:{name} xmlns:u="{urn}">
@@ -129,15 +87,23 @@ impl UpnpClient {
 </s:Body>
 /s:Envelope>
 "#
-        );
+            );
 
-        Self::action(urn, name, args.as_str()).await
+            let res = Self::action(urn, name, args.as_str()).await;
+            if res.is_err() {
+                continue;
+            }
+            return Ok(res.unwrap());
+        }
+
+        anyhow::bail!("failed to get generic port mapping");
     }
 
-    async fn get_external_ip_address_sub(urn: &URN) -> anyhow::Result<HashMap<String, String>> {
-        let name = "GetExternalIPAddress";
-        let args = format!(
-            r#"\
+    pub async fn get_external_ip_address() -> anyhow::Result<HashMap<String, String>> {
+        for urn in URNS.iter() {
+            let name = "GetExternalIPAddress";
+            let args = format!(
+                r#"\
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body>
   <u:{name} xmlns:u="{urn}">
@@ -145,9 +111,16 @@ impl UpnpClient {
 </s:Body>
 /s:Envelope>
 "#
-        );
+            );
 
-        Self::action(urn, name, args.as_str()).await
+            let res = Self::action(urn, name, args.as_str()).await;
+            if res.is_err() {
+                continue;
+            }
+            return Ok(res.unwrap());
+        }
+
+        anyhow::bail!("failed to get external ip address");
     }
 
     async fn action(urn: &URN, name: &str, args: &str) -> anyhow::Result<HashMap<String, String>> {
