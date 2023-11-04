@@ -282,6 +282,7 @@ dependencies = [
  "hyper",
  "jsonwebtoken",
  "local-ip-address",
+ "nom",
  "once_cell",
  "pin-utils",
  "reqwest",
