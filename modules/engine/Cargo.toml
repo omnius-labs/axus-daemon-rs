@@ -43,6 +43,7 @@ rupnp = { workspace = true }
 tokio-util = { workspace = true }
 pin-utils = { workspace = true }
 local-ip-address = { workspace = true }
+cbor = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }
