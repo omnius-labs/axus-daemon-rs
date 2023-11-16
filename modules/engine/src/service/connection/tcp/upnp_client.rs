@@ -14,7 +14,7 @@ static URNS: Lazy<Vec<URN>> = Lazy::new(|| {
 pub struct UpnpClient;
 
 impl UpnpClient {
-    pub async fn add_port_mapping(protocol: &str, external_port: i32, internal_port: i32, description: &str) -> anyhow::Result<()> {
+    pub async fn add_port_mapping(protocol: &str, external_port: u16, internal_port: u16, description: &str) -> anyhow::Result<()> {
         let internal_ip = local_ip_address::local_ip()?.to_string();
         for urn in URNS.iter() {
             let name = "AddPortMapping";
@@ -47,7 +47,7 @@ impl UpnpClient {
         anyhow::bail!("failed to add port mapping");
     }
 
-    pub async fn delete_port_mapping(protocol: &str, external_port: i32) -> anyhow::Result<()> {
+    pub async fn delete_port_mapping(protocol: &str, external_port: u16) -> anyhow::Result<()> {
         for urn in URNS.iter() {
             let name = "DeletePortMapping";
             let args = format!(
