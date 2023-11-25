@@ -13,27 +13,27 @@ pub struct ConnectionTcpAccepter {
 }
 
 impl ConnectionTcpAccepter {
-    pub async fn new(addr: &str, use_upnp: bool) -> anyhow::Result<ConnectionTcpAccepter> {
+    pub async fn new(addr: &str, use_upnp: bool) -> anyhow::Result<Self> {
         if let Ok(addr) = SocketAddrV4::from_str(addr) {
             let listener = TcpListener::bind(addr).await?;
 
             if use_upnp && addr.ip().is_unspecified() {
                 let upnp_port_mapping = UpnpPortMapping::new(addr.port()).await;
                 if let Ok(upnp_port_mapping) = upnp_port_mapping {
-                    return Ok(ConnectionTcpAccepter {
+                    return Ok(Self {
                         listener,
                         upnp_port_mapping: Some(upnp_port_mapping),
                     });
                 }
             }
 
-            return Ok(ConnectionTcpAccepter {
+            return Ok(Self {
                 listener,
                 upnp_port_mapping: None,
             });
         } else if let Ok(addr) = SocketAddrV6::from_str(addr) {
             let listener = TcpListener::bind(addr).await?;
-            return Ok(ConnectionTcpAccepter {
+            return Ok(Self {
                 listener,
                 upnp_port_mapping: None,
             });
