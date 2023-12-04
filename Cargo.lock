@@ -244,7 +244,7 @@ dependencies = [
  "jsonwebtoken",
  "once_cell",
  "reqwest",
- "ring 0.17.5",
+ "ring 0.17.6",
  "serde",
  "serde_json",
  "serial_test",
@@ -281,7 +281,7 @@ dependencies = [
  "nom",
  "once_cell",
  "pin-utils",
- "ring 0.17.5",
+ "ring 0.17.6",
  "rupnp",
  "serde",
  "serde_json",
@@ -2170,9 +2170,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.5"
+version = "0.17.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb0205304757e5d899b9c2e448b867ffd03ae7f988002e47cd24954391394d0b"
+checksum = "684d5e6e18f669ccebf64a92236bb7db9a34f07be010e3627368182027180866"
 dependencies = [
  "cc",
  "getrandom",
@@ -2356,7 +2356,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
- "ring 0.17.5",
+ "ring 0.17.6",
  "untrusted 0.9.0",
 ]
 
@@ -3499,7 +3499,7 @@ version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
 dependencies = [
- "ring 0.17.5",
+ "ring 0.17.6",
  "untrusted 0.9.0",
 ]
 
