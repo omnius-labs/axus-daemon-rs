@@ -1,6 +1,5 @@
 use std::cmp::{self, Ordering};
 
-#[derive(Default)]
 pub struct Kadex;
 
 impl Kadex {
