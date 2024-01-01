@@ -42,7 +42,8 @@ impl ConnectionTcpAccepter {
     }
 
     pub async fn accept(&self) -> anyhow::Result<(TcpStream, SocketAddr)> {
-        Ok(self.listener.accept().await?)
+        let (stream, addr) = self.listener.accept().await?;
+        Ok((stream, addr))
     }
 
     pub async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {

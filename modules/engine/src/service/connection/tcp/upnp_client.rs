@@ -149,7 +149,7 @@ impl UpnpClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::service::UpnpClient;
+    use super::*;
 
     #[tokio::test]
     #[ignore]

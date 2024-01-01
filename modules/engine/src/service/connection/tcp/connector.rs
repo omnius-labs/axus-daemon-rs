@@ -1,9 +1,5 @@
-use std::sync::Arc;
-
 use fast_socks5::client::Socks5Stream;
 use tokio::net::TcpStream;
-
-use crate::service::AsyncStream;
 
 pub struct ConnectionTcpConnectorOption {
     pub proxy: TcpProxyOption,
@@ -11,7 +7,7 @@ pub struct ConnectionTcpConnectorOption {
 
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,
-    pub addr: String,
+    pub addr: Option<String>,
 }
 
 pub enum TcpProxyType {
@@ -28,17 +24,20 @@ impl ConnectionTcpConnector {
         Ok(Self { option })
     }
 
-    pub async fn connect(&self, addr: &str) -> anyhow::Result<Arc<dyn AsyncStream>> {
+    pub async fn connect(&self, addr: &str) -> anyhow::Result<TcpStream> {
         match self.option.proxy.typ {
             TcpProxyType::None => {
                 let stream = TcpStream::connect(addr).await?;
-                Ok(Arc::new(stream))
+                Ok(stream)
             }
             TcpProxyType::Socks5 => {
                 if let Some((host, port)) = Self::parse_host_and_port(addr) {
-                    let config = fast_socks5::client::Config::default();
-                    let stream = Socks5Stream::connect(self.option.proxy.addr.as_str(), host, port, config).await?;
-                    return Ok(Arc::new(stream));
+                    if let Some(proxy_addr) = &self.option.proxy.addr {
+                        let config = fast_socks5::client::Config::default();
+                        let stream = Socks5Stream::connect(proxy_addr.as_str(), host, port, config).await?;
+                        let stream = stream.get_socket();
+                        return Ok(stream);
+                    }
                 }
                 anyhow::bail!("failed to connect by socks5: {:?}", addr);
             }
