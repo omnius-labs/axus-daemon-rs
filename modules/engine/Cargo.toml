@@ -39,6 +39,7 @@ fast-socks5 = { workspace = true }
 rocksdb = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand_core = { workspace = true }
+sha3 = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }
