@@ -21,11 +21,9 @@ mod tests {
     #[ignore]
     async fn simple_test() {
         let accepter = ConnectionTcpAccepter::new("127.0.0.1:50000", false).await.unwrap();
-        let connector = ConnectionTcpConnector::new(ConnectionTcpConnectorOption {
-            proxy: TcpProxyOption {
-                typ: TcpProxyType::None,
-                addr: None,
-            },
+        let connector = ConnectionTcpConnector::new(TcpProxyOption {
+            typ: TcpProxyType::None,
+            addr: None,
         })
         .await
         .unwrap();

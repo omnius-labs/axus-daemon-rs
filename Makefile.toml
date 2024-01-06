@@ -16,7 +16,7 @@ dependencies = ["fmt-check", "clippy"]
 
 [tasks.test]
 command = "cargo"
-args = ["test"]
+args = ["test", "--all-features"]
 dependencies = ["lint"]
 
 [tasks.watch]
