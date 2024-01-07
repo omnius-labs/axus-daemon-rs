@@ -5,7 +5,9 @@ use std::{
 
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::service::UpnpClient;
+use crate::service::connection::Stream;
+
+use super::UpnpClient;
 
 pub struct ConnectionTcpAccepter {
     listener: TcpListener,
@@ -41,8 +43,9 @@ impl ConnectionTcpAccepter {
         anyhow::bail!("invalid address");
     }
 
-    pub async fn accept(&self) -> anyhow::Result<(TcpStream, SocketAddr)> {
+    pub async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
+        let stream = Stream::new(stream);
         Ok((stream, addr))
     }
 

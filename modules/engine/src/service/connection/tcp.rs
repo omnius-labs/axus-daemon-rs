@@ -8,12 +8,7 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use futures_util::SinkExt;
-    use tokio_stream::StreamExt;
-    use tokio_util::{
-        bytes::Bytes,
-        codec::{Framed, LengthDelimitedCodec},
-    };
+    use crate::service::connection::{AsyncSendRecv, AsyncSendRecvExt};
 
     use super::*;
 
@@ -28,15 +23,12 @@ mod tests {
         .await
         .unwrap();
 
-        let client = connector.connect("127.0.0.1:50000").await.unwrap();
-        let mut client = Framed::new(client, LengthDelimitedCodec::new());
-        let (server, _) = accepter.accept().await.unwrap();
-        let mut server = Framed::new(server, LengthDelimitedCodec::new());
+        let mut client: Box<dyn AsyncSendRecv + Send + Sync + Unpin> = Box::new(connector.connect("127.0.0.1:50000").await.unwrap());
+        let mut server: Box<dyn AsyncSendRecv + Send + Sync + Unpin> = Box::new(accepter.accept().await.unwrap().0);
 
-        client.send(Bytes::from("Hello, World!")).await.unwrap();
+        client.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = server.recv_message().await.unwrap();
 
-        if let Some(Ok(line)) = server.next().await {
-            println!("{}", std::str::from_utf8(&line).unwrap());
-        }
+        println!("{}", std::str::from_utf8(&line).unwrap());
     }
 }

@@ -1,13 +1,10 @@
-use std::net::SocketAddr;
-use std::str::FromStr;
-
 use nom::bytes::complete::{is_not, tag};
 use nom::character::complete::{char, multispace0};
 use nom::sequence::delimited;
 use nom::IResult;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OmniAddress {
     value: String,
 }
@@ -17,9 +14,9 @@ impl OmniAddress {
         OmniAddress { value: value.to_owned() }
     }
 
-    pub fn parse_tcp(self) -> anyhow::Result<SocketAddr> {
+    pub fn parse_tcp(&self) -> anyhow::Result<String> {
         let (_, addr) = Self::parse_tcp_sub(&self.value).map_err(|e| e.to_owned())?;
-        Ok(SocketAddr::from_str(addr)?)
+        Ok(addr.to_string())
     }
 
     fn parse_tcp_sub(v: &str) -> IResult<&str, &str> {

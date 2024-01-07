@@ -1,7 +1,7 @@
 mod accepter;
 mod connector;
-mod message;
+pub mod message;
+pub mod model;
 
 pub use accepter::*;
 pub use connector::*;
-pub use message::*;

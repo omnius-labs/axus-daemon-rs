@@ -1,6 +1,8 @@
 use fast_socks5::client::Socks5Stream;
 use tokio::net::TcpStream;
 
+use crate::service::connection::Stream;
+
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,
     pub addr: Option<String>,
@@ -20,10 +22,11 @@ impl ConnectionTcpConnector {
         Ok(Self { proxy_option })
     }
 
-    pub async fn connect(&self, addr: &str) -> anyhow::Result<TcpStream> {
+    pub async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>> {
         match self.proxy_option.typ {
             TcpProxyType::None => {
                 let stream = TcpStream::connect(addr).await?;
+                let stream = Stream::new(stream);
                 Ok(stream)
             }
             TcpProxyType::Socks5 => {
@@ -32,6 +35,7 @@ impl ConnectionTcpConnector {
                         let config = fast_socks5::client::Config::default();
                         let stream = Socks5Stream::connect(proxy_addr.as_str(), host, port, config).await?;
                         let stream = stream.get_socket();
+                        let stream = Stream::new(stream);
                         return Ok(stream);
                     }
                 }
