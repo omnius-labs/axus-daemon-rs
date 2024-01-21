@@ -1,10 +1,12 @@
+use std::fmt;
+
 use nom::bytes::complete::{is_not, tag};
 use nom::character::complete::{char, multispace0};
 use nom::sequence::delimited;
 use nom::IResult;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OmniAddress {
     value: String,
 }
@@ -23,6 +25,12 @@ impl OmniAddress {
         let (v, _) = tag("tcp")(v)?;
         let (v, addr) = delimited(char('('), delimited(multispace0, is_not(")"), multispace0), char(')'))(v)?;
         Ok((v, addr))
+    }
+}
+
+impl fmt::Display for OmniAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 

@@ -9,6 +9,8 @@ build = "build.rs"
 stable-test = []
 
 [dependencies]
+core-base = { workspace = true }
+
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -40,6 +42,7 @@ ed25519-dalek = { workspace = true }
 rand_core = { workspace = true }
 sha3 = { workspace = true }
 ciborium = { workspace = true }
+bitflags = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

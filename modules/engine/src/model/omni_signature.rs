@@ -3,21 +3,22 @@ use std::fmt;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64, Engine};
 use ed25519_dalek::Signer;
 use rand_core::OsRng;
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OmniSignType {
     Ed25519,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OmniSigner {
     typ: OmniSignType,
     name: String,
     key: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OmniSignature {
     typ: OmniSignType,
     name: String,
@@ -69,13 +70,9 @@ impl fmt::Display for OmniSigner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.typ {
             OmniSignType::Ed25519 => {
-                let signing_key_bytes = self.key.as_slice();
-                if signing_key_bytes.len() != ed25519_dalek::KEYPAIR_LENGTH {
-                    return Err(fmt::Error);
-                }
-                let signing_key_bytes = <&[u8; ed25519_dalek::KEYPAIR_LENGTH]>::try_from(signing_key_bytes).map_err(|_| fmt::Error)?;
+                let signing_key_bytes: [u8; ed25519_dalek::KEYPAIR_LENGTH] = self.key.clone().try_into().map_err(|_| fmt::Error)?;
 
-                let signing_key = ed25519_dalek::SigningKey::from_keypair_bytes(signing_key_bytes).map_err(|_| fmt::Error)?;
+                let signing_key = ed25519_dalek::SigningKey::from_keypair_bytes(&signing_key_bytes).map_err(|_| fmt::Error)?;
                 let public_key = signing_key.verifying_key().to_bytes();
 
                 let mut hasher = Sha3_256::new();
@@ -92,20 +89,16 @@ impl OmniSignature {
     pub fn verify(&self, msg: &[u8]) -> anyhow::Result<()> {
         match self.typ {
             OmniSignType::Ed25519 => {
-                let verifying_key_bytes = self.public_key.as_slice();
-                if verifying_key_bytes.len() != ed25519_dalek::PUBLIC_KEY_LENGTH {
-                    anyhow::bail!("Invalid verifying_key length");
-                }
-                let verifying_key_bytes = <&[u8; ed25519_dalek::PUBLIC_KEY_LENGTH]>::try_from(verifying_key_bytes)?;
+                let verifying_key_bytes: [u8; ed25519_dalek::PUBLIC_KEY_LENGTH] = self
+                    .public_key
+                    .clone()
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("Invalid verifying_key length"))?;
+                let signature_bytes: [u8; ed25519_dalek::SIGNATURE_LENGTH] =
+                    self.value.clone().try_into().map_err(|_| anyhow::anyhow!("Invalid signature length"))?;
 
-                let signature_bytes = self.value.as_slice();
-                if signature_bytes.len() != ed25519_dalek::SIGNATURE_LENGTH {
-                    anyhow::bail!("Invalid signature length");
-                }
-                let signature_bytes = <&[u8; ed25519_dalek::SIGNATURE_LENGTH]>::try_from(signature_bytes)?;
-
-                let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(verifying_key_bytes)?;
-                let signature = ed25519_dalek::Signature::from_bytes(signature_bytes);
+                let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&verifying_key_bytes)?;
+                let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes);
                 Ok(verifying_key.verify_strict(msg, &signature)?)
             }
         }
