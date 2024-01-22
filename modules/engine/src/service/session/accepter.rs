@@ -54,15 +54,13 @@ impl SessionAccepter {
             let signer = signer.clone();
             let random_bytes_provider = random_bytes_provider.clone();
             let join_handle = tokio::spawn(async move {
-                loop {
-                    select! {
-                        _ = token.cancelled() => {
-                           break;
-                       }
-                       _ = Self::internal_accept(sender.clone(), tcp_connector.clone(), signer.clone(), random_bytes_provider.clone()) => {
-                           continue;
-                       }
-                    }
+                select! {
+                    _ = token.cancelled() => {}
+                    _ = async {
+                        loop {
+                             let _ = Self::internal_accept(sender.clone(), tcp_connector.clone(), signer.clone(), random_bytes_provider.clone()).await;
+                        }
+                    } => {}
                 }
             });
 
