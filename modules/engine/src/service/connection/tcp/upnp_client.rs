@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::Duration};
 
-use futures_util::TryStreamExt;
 use once_cell::sync::Lazy;
 use rupnp::ssdp::{SearchTarget, URN};
+use tokio_stream::StreamExt;
 
 static URNS: Lazy<Vec<URN>> = Lazy::new(|| {
     vec![
