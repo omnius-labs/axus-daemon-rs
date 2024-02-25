@@ -81,3 +81,4 @@ rand_core = "0.6.4"
 sha3 = "0.10.8"
 ciborium = "0.2.2"
 bitflags = { version = "2.4.2", features = ["serde"] }
+tempfile = "3.10.0"
