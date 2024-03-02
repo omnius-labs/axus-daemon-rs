@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use futures_util::SinkExt;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::StreamExt;
 use tokio_util::{
     bytes::{Buf, BufMut, Bytes, BytesMut},
     codec::{Framed, LengthDelimitedCodec},
 };
+
+use crate::service::util::Cbor;
 
 #[async_trait]
 pub trait AsyncSendRecv {
@@ -59,18 +61,14 @@ where
     T: ?Sized + Send + Sync + Unpin,
 {
     async fn send_message<TItem: Serialize + Send>(&mut self, item: TItem) -> anyhow::Result<()> {
-        let buffer = BytesMut::new();
-        let mut writer = buffer.writer();
-        ciborium::ser::into_writer(&item, &mut writer)?;
-        let buffer = writer.into_inner().freeze();
-        self.send(buffer).await?;
+        let b = Cbor::serialize(item)?;
+        self.send(b).await?;
         Ok(())
     }
 
-    async fn recv_message<TItem: for<'a> Deserialize<'a>>(&mut self) -> anyhow::Result<TItem> {
-        let buffer = self.recv().await?;
-        let mut reader = buffer.reader();
-        let item: TItem = ciborium::de::from_reader(&mut reader)?;
+    async fn recv_message<TItem: DeserializeOwned>(&mut self) -> anyhow::Result<TItem> {
+        let b = self.recv().await?;
+        let item = Cbor::deserialize(b)?;
         Ok(item)
     }
 }

@@ -285,6 +285,7 @@ dependencies = [
  "once_cell",
  "pin-utils",
  "rand_core",
+ "reqwest",
  "ring 0.17.8",
  "rocksdb",
  "rupnp",

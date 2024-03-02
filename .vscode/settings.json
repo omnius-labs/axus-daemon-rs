@@ -1,10 +1,14 @@
 {
-    "rust-analyzer.showUnlinkedFileNotification": false,
-    "cSpell.words": [
-        "bitflags",
-        "hasher",
-        "Kadex",
-        "omni",
-        "Upnp"
-    ]
+  "rust-analyzer.showUnlinkedFileNotification": false,
+  "cSpell.words": [
+    "addrs",
+    "bitflags",
+    "Cbor",
+    "hasher",
+    "Kadex",
+    "kadx",
+    "omni",
+    "reqwest",
+    "Upnp"
+  ]
 }

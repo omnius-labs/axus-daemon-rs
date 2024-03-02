@@ -44,6 +44,7 @@ sha3 = { workspace = true }
 ciborium = { workspace = true }
 bitflags = { workspace = true }
 tempfile = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

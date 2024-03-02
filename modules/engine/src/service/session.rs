@@ -15,10 +15,11 @@ mod tests {
 
     use crate::{
         model::{OmniAddress, OmniSignType, OmniSigner},
-        service::connection::{AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType},
+        service::{
+            connection::{AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType},
+            session::{SessionAccepter, SessionConnector},
+        },
     };
-
-    use super::*;
 
     #[tokio::test]
     #[ignore]
