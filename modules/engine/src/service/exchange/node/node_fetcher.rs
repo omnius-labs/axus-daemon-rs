@@ -1,11 +1,11 @@
 use crate::model::NodeProfile;
 use reqwest;
 
-pub struct InitialNodeFetcher {
+pub struct NodeFetcher {
     urls: Vec<String>,
 }
 
-impl InitialNodeFetcher {
+impl NodeFetcher {
     pub fn new(urls: [&str]) {
         Self { urls: urls.to_vec() }
     }
