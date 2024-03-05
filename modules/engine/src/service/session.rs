@@ -11,13 +11,12 @@ mod tests {
     use std::sync::Arc;
 
     use core_base::random_bytes::RandomBytesProviderImpl;
-    use tests::model::SessionType;
 
     use crate::{
         model::{OmniAddress, OmniSignType, OmniSigner},
         service::{
             connection::{AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType},
-            session::{SessionAccepter, SessionConnector},
+            session::{model::SessionType, SessionAccepter, SessionConnector},
         },
     };
 
