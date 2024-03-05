@@ -8,7 +8,7 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::service::connection::{AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption};
+    use crate::service::connection::{AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType};
 
     #[tokio::test]
     #[ignore]
