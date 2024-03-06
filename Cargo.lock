@@ -275,6 +275,7 @@ dependencies = [
  "ciborium",
  "config",
  "core-base",
+ "crc",
  "ed25519-dalek",
  "fast-socks5",
  "futures",
