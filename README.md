@@ -9,7 +9,18 @@
 - [Specifications](./docs/specifications/index.adoc)
 - [FAQ](./docs/faq.md)
 
+## Development
+
+### Installing Required Dependencies
+
+#### Debian and Ubuntu
+
+```sh
+sudo apt-get install -y libclang-dev
+```
+
 ## Links
 
 - docs: https://docs.omnius-labs.com/
 - icons: https://icooon-mono.com/
+sudo apt-get install -y libclang-dev

@@ -7,17 +7,15 @@ use nom::IResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OmniAddress {
-    value: String,
-}
+pub struct OmniAddress(String);
 
 impl OmniAddress {
     pub fn new(value: &str) -> OmniAddress {
-        OmniAddress { value: value.to_owned() }
+        OmniAddress(value.to_owned())
     }
 
     pub fn parse_tcp(&self) -> anyhow::Result<String> {
-        let (_, addr) = Self::parse_tcp_sub(&self.value).map_err(|e| e.to_owned())?;
+        let (_, addr) = Self::parse_tcp_sub(&self.0).map_err(|e| e.to_owned())?;
         Ok(addr.to_string())
     }
 
@@ -30,7 +28,13 @@ impl OmniAddress {
 
 impl fmt::Display for OmniAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for OmniAddress {
+    fn from(value: String) -> Self {
+        Self::new(value.as_str())
     }
 }
 
