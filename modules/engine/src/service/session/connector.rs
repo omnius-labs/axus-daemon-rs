@@ -17,14 +17,14 @@ use super::{
 };
 
 pub struct SessionConnector {
-    tcp_connector: Arc<ConnectionTcpConnector>,
+    tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
 }
 
 impl SessionConnector {
     pub fn new(
-        tcp_connector: Arc<ConnectionTcpConnector>,
+        tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
         signer: Arc<OmniSigner>,
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
     ) -> Self {

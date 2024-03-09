@@ -3,18 +3,26 @@ use std::{
     str::FromStr,
 };
 
+use async_trait::async_trait;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::service::connection::Stream;
 
 use super::UpnpClient;
 
-pub struct ConnectionTcpAccepter {
+#[async_trait]
+pub trait ConnectionTcpAccepter {
+    async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)>;
+    async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>>;
+    async fn terminate(&self) -> anyhow::Result<()>;
+}
+
+pub struct ConnectionTcpAccepterImpl {
     listener: TcpListener,
     upnp_port_mapping: Option<UpnpPortMapping>,
 }
 
-impl ConnectionTcpAccepter {
+impl ConnectionTcpAccepterImpl {
     pub async fn new(addr: &str, use_upnp: bool) -> anyhow::Result<Self> {
         if let Ok(addr) = SocketAddrV4::from_str(addr) {
             let listener = TcpListener::bind(addr).await?;
@@ -42,14 +50,17 @@ impl ConnectionTcpAccepter {
         }
         anyhow::bail!("invalid address");
     }
+}
 
-    pub async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)> {
+#[async_trait]
+impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
+    async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
         let stream = Stream::new(stream);
         Ok((stream, addr))
     }
 
-    pub async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {
+    async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {
         let mut res: Vec<IpAddr> = Vec::new();
         if let Ok(IpAddr::V4(ip4)) = local_ip_address::local_ip() {
             if ip4.is_global() {
@@ -70,7 +81,7 @@ impl ConnectionTcpAccepter {
         Ok(res)
     }
 
-    pub async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
             upnp_port_mapping.terminate().await?;
         }

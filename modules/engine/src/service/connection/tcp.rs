@@ -8,13 +8,16 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::service::connection::{AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType};
+    use crate::service::connection::{
+        AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
+        TcpProxyOption, TcpProxyType,
+    };
 
     #[tokio::test]
     #[ignore]
     async fn simple_test() {
-        let accepter = ConnectionTcpAccepter::new("127.0.0.1:50000", false).await.unwrap();
-        let connector = ConnectionTcpConnector::new(TcpProxyOption {
+        let accepter = ConnectionTcpAccepterImpl::new("127.0.0.1:50000", false).await.unwrap();
+        let connector = ConnectionTcpConnectorImpl::new(TcpProxyOption {
             typ: TcpProxyType::None,
             addr: None,
         })

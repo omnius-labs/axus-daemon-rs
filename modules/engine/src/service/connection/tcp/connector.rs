@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use fast_socks5::client::Socks5Stream;
 use tokio::net::TcpStream;
 
@@ -13,16 +14,36 @@ pub enum TcpProxyType {
     Socks5,
 }
 
-pub struct ConnectionTcpConnector {
+#[async_trait]
+pub trait ConnectionTcpConnector {
+    async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>>;
+}
+
+pub struct ConnectionTcpConnectorImpl {
     proxy_option: TcpProxyOption,
 }
 
-impl ConnectionTcpConnector {
+impl ConnectionTcpConnectorImpl {
     pub async fn new(proxy_option: TcpProxyOption) -> anyhow::Result<Self> {
         Ok(Self { proxy_option })
     }
 
-    pub async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>> {
+    fn parse_host_and_port(input: &str) -> Option<(String, u16)> {
+        if let Some(idx) = input.rfind(':') {
+            let (host_str, port_str) = input.split_at(idx);
+            let host = host_str.to_string();
+            let port_str = &port_str[1..]; // Skip the ':'
+            let port = port_str.parse().ok()?;
+            Some((host, port))
+        } else {
+            None
+        }
+    }
+}
+
+#[async_trait]
+impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
+    async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>> {
         match self.proxy_option.typ {
             TcpProxyType::None => {
                 let stream = TcpStream::connect(addr).await?;
@@ -41,18 +62,6 @@ impl ConnectionTcpConnector {
                 }
                 anyhow::bail!("failed to connect by socks5: {:?}", addr);
             }
-        }
-    }
-
-    fn parse_host_and_port(input: &str) -> Option<(String, u16)> {
-        if let Some(idx) = input.rfind(':') {
-            let (host_str, port_str) = input.split_at(idx);
-            let host = host_str.to_string();
-            let port_str = &port_str[1..]; // Skip the ':'
-            let port = port_str.parse().ok()?;
-            Some((host, port))
-        } else {
-            None
         }
     }
 }

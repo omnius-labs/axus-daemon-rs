@@ -30,7 +30,7 @@ pub struct SessionAccepter {
 
 impl SessionAccepter {
     pub async fn new(
-        tcp_connector: Arc<ConnectionTcpAccepter>,
+        tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
     ) -> Self {
@@ -76,7 +76,7 @@ impl SessionAccepter {
 
     async fn internal_accept(
         senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
-        tcp_connector: Arc<ConnectionTcpAccepter>,
+        tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
     ) -> anyhow::Result<()> {

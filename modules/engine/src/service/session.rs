@@ -15,7 +15,10 @@ mod tests {
     use crate::{
         model::{OmniAddress, OmniSignType, OmniSigner},
         service::{
-            connection::{AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpConnector, TcpProxyOption, TcpProxyType},
+            connection::{
+                AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
+                TcpProxyOption, TcpProxyType,
+            },
             session::{model::SessionType, SessionAccepter, SessionConnector},
         },
     };
@@ -23,9 +26,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_test() {
-        let tcp_accepter = Arc::new(ConnectionTcpAccepter::new("127.0.0.1:60000", false).await.unwrap());
-        let tcp_connector = Arc::new(
-            ConnectionTcpConnector::new(TcpProxyOption {
+        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
+            Arc::new(ConnectionTcpAccepterImpl::new("127.0.0.1:60000", false).await.unwrap());
+        let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
+            ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
                 addr: None,
             })

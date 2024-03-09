@@ -2,9 +2,12 @@
   "rust-analyzer.showUnlinkedFileNotification": false,
   "cSpell.words": [
     "addrs",
+    "axus",
     "bitflags",
+    "CASTAGNOLI",
     "Cbor",
     "hasher",
+    "ISCSI",
     "Kadex",
     "kadx",
     "omni",
