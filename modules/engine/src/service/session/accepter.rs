@@ -45,6 +45,22 @@ impl SessionAccepter {
             receivers.lock().await.insert(typ.clone(), rx);
         }
 
+        let join_handles = Self::spawn(&token, senders, tcp_connector, signer, random_bytes_provider);
+
+        Self {
+            receivers,
+            join_handle: Arc::new(Mutex::new(Some(join_all(join_handles)))),
+            cancellation_token: token,
+        }
+    }
+
+    fn spawn(
+        token: &CancellationToken,
+        senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+        tcp_connector: Arc<dyn ConnectionTcpAccepter + Sync + Send>,
+        signer: Arc<OmniSigner>,
+        random_bytes_provider: Arc<dyn RandomBytesProvider + Sync + Send>,
+    ) -> Vec<JoinHandle<()>> {
         let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
 
         for _ in 0..3 {
@@ -67,11 +83,7 @@ impl SessionAccepter {
             join_handles.push(join_handle);
         }
 
-        Self {
-            receivers,
-            join_handle: Arc::new(Mutex::new(Some(join_all(join_handles)))),
-            cancellation_token: token,
-        }
+        join_handles
     }
 
     async fn internal_accept(
