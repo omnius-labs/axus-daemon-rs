@@ -46,6 +46,7 @@ bitflags = { workspace = true }
 tempfile = { workspace = true }
 reqwest = { workspace = true }
 crc = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }
