@@ -12,6 +12,7 @@ use crate::{
 };
 
 use super::NodeRefFetcher;
+
 #[allow(dead_code)]
 pub struct NodeFinder {
     session_connector: Arc<SessionConnector>,

@@ -6,6 +6,7 @@ use sqlx::migrate::MigrateDatabase;
 use sqlx::QueryBuilder;
 use sqlx::{sqlite::SqlitePool, Sqlite};
 
+use crate::service::util::{MigrationRequest, SqliteMigrator};
 use crate::{model::NodeRef, service::util::UriConverter};
 
 pub struct NodeRefRepo {
@@ -32,18 +33,22 @@ impl NodeRefRepo {
     }
 
     async fn migrate(&self) -> anyhow::Result<()> {
-        sqlx::query(
-            r#"
+        let migrator = SqliteMigrator::new(self.db.clone());
+
+        let requests = vec![MigrationRequest {
+            name: "2024-03-19_init".to_string(),
+            queries: r#"
 CREATE TABLE IF NOT EXISTS node_refs (
     value TEXT NOT NULL PRIMARY KEY,
     weight INTEGER NOT NULL,
     created_time INTEGER NOT NULL,
     updated_time INTEGER NOT NULL
 );
-"#,
-        )
-        .execute(self.db.as_ref())
-        .await?;
+"#
+            .to_string(),
+        }];
+
+        migrator.migrate(requests).await?;
 
         Ok(())
     }
@@ -71,9 +76,11 @@ ORDER BY weight DESC
 INSERT OR IGNORE INTO node_refs (value, weight, created_time, updated_time)
 "#,
         );
+
         let now = self.system_clock.now().timestamp();
+        let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_ref(v).ok()).collect();
+
         query_builder.push_values(vs, |mut b, v| {
-            let v = UriConverter::encode_node_ref(v).unwrap();
             b.push_bind(v);
             b.push_bind(weight);
             b.push_bind(now);
