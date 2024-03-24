@@ -98,14 +98,15 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use core_base::clock::SystemClockUtcMock;
+    use testresult::TestResult;
 
     use crate::model::{NodeRef, OmniAddress};
 
     use super::NodeRefRepo;
 
     #[tokio::test]
-    pub async fn simple_test() {
-        let dir = tempfile::tempdir().unwrap();
+    pub async fn simple_test() -> TestResult {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().as_os_str().to_str().unwrap();
 
         let vs: Vec<DateTime<Utc>> = vec![
@@ -113,15 +114,17 @@ mod tests {
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into(),
         ];
         let clock = Arc::new(SystemClockUtcMock::new(vs));
-        let repo = NodeRefRepo::new(path, clock).await.unwrap();
+        let repo = NodeRefRepo::new(path, clock).await?;
 
         let vs: Vec<NodeRef> = vec![NodeRef {
             id: vec![0],
             addrs: vec![OmniAddress::new("test")],
         }];
-        repo.insert_bulk_node_ref(&vs, 1).await.unwrap();
+        repo.insert_bulk_node_ref(&vs, 1).await?;
 
-        let res = repo.get_node_refs().await.unwrap();
-        assert_eq!(res, vs)
+        let res = repo.get_node_refs().await?;
+        assert_eq!(res, vs);
+
+        Ok(())
     }
 }
