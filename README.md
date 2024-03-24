@@ -1,4 +1,4 @@
-# Axus - Omnius File Exchanger Daemon
+# Axus - Omnius File Exchanger (Daemon)
 
 [![test](https://github.com/omnius-labs/axus-rs/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/omnius-labs/axus-rs/actions/workflows/test.yml)
 [![chat](https://badges.gitter.im/omnius-labs.svg)](https://app.gitter.im/#/room/#omnius-labs:gitter.im)
