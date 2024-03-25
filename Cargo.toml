@@ -54,11 +54,6 @@ utoipa = "3.0.0"
 utoipa-swagger-ui = { version = "3.0.2", features = ["axum"] }
 ring = "0.17.7"
 hex = "0.4.3"
-vergen = { version = "7", default-features = false, features = [
-    "build",
-    "rustc",
-    "git",
-] }
 urlencoding = "2.1.2"
 hyper = "0.14"
 tower = "0.4"
