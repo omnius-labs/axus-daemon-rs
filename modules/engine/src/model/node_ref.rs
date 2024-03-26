@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::OmniAddress;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
 pub struct NodeRef {
     pub id: Vec<u8>,
     pub addrs: Vec<OmniAddress>,

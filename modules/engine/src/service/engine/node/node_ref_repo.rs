@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS node_refs (
         let res: Vec<(String,)> = sqlx::query_as(
             r#"
 SELECT value FROM node_refs
-ORDER BY weight DESC
+ORDER BY weight DESC, updated_time DESC
 "#,
         )
         .fetch_all(self.db.as_ref())

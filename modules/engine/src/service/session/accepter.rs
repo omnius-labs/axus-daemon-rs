@@ -42,7 +42,7 @@ impl SessionAccepter {
         let senders = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
         let receivers = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
 
-        for typ in [SessionType::NodeExchanger].iter() {
+        for typ in [SessionType::NodeFinder].iter() {
             let (tx, rx) = mpsc::channel(20);
             senders.lock().await.insert(typ.clone(), tx);
             receivers.lock().await.insert(typ.clone(), rx);
@@ -123,7 +123,7 @@ impl SessionAccepter {
 
             let received_session_request_message: V1RequestMessage = stream.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
-                V1RequestType::NodeExchanger => SessionType::NodeExchanger,
+                V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
             if let Ok(permit) = senders.lock().await.get(&typ).unwrap().try_reserve() {
                 let send_session_result_message = V1ResultMessage {
