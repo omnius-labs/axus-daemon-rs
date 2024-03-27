@@ -44,11 +44,11 @@ mod tests {
 
         let client = Arc::new(
             session_connector
-                .connect(&OmniAddress::new("tcp(127.0.0.1:60000)"), &SessionType::NodeExchanger)
+                .connect(&OmniAddress::new("tcp(127.0.0.1:60000)"), &SessionType::NodeFinder)
                 .await
                 .unwrap(),
         );
-        let server = Arc::new(session_accepter.accept(&SessionType::NodeExchanger).await.unwrap());
+        let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await.unwrap());
 
         client.stream.lock().await.send_message(b"Hello, World!").await.unwrap();
         let line: Vec<u8> = server.stream.lock().await.recv_message().await.unwrap();

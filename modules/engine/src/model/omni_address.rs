@@ -6,7 +6,7 @@ use nom::sequence::delimited;
 use nom::IResult;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OmniAddress(String);
 
 impl OmniAddress {

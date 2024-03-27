@@ -43,6 +43,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] }
 uuid = { version = "1.7.0", features = ["serde", "v4"] }
 sqlx = { version = "0.6.2", features = [
     "postgres",
+    "sqlite",
     "chrono",
     "json",
     "macros",
@@ -53,11 +54,6 @@ utoipa = "3.0.0"
 utoipa-swagger-ui = { version = "3.0.2", features = ["axum"] }
 ring = "0.17.7"
 hex = "0.4.3"
-vergen = { version = "7", default-features = false, features = [
-    "build",
-    "rustc",
-    "git",
-] }
 urlencoding = "2.1.2"
 hyper = "0.14"
 tower = "0.4"
@@ -83,3 +79,4 @@ ciborium = "0.2.2"
 bitflags = { version = "2.4.2", features = ["serde"] }
 tempfile = "3.10.0"
 crc = "3.0.1"
+testresult = "0.4.0"
