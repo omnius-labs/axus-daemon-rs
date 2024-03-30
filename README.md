@@ -23,4 +23,3 @@ sudo apt-get install -y libclang-dev
 
 - docs: https://docs.omnius-labs.com/
 - icons: https://icooon-mono.com/
-sudo apt-get install -y libclang-dev
