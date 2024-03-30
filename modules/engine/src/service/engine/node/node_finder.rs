@@ -68,11 +68,7 @@ impl NodeFinder {
             option,
             cancellation_token,
             sessions: Arc::new(Mutex::new(Vec::new())),
-            connected_node_refs: Arc::new(Mutex::new(VolatileHashSet::new(
-                Duration::seconds(180),
-                Duration::seconds(30),
-                system_clock,
-            ))),
+            connected_node_refs: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), system_clock))),
             join_handles: Arc::new(Mutex::new(None)),
         };
         result.create_tasks().await;
