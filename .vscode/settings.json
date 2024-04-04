@@ -6,6 +6,7 @@
     "bitflags",
     "CASTAGNOLI",
     "Cbor",
+    "chacha",
     "chrono",
     "Deque",
     "hasher",
@@ -15,6 +16,8 @@
     "kadx",
     "omni",
     "reqwest",
+    "Seedable",
+    "sqlx",
     "Upnp"
   ]
 }
