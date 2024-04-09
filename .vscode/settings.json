@@ -6,12 +6,18 @@
     "bitflags",
     "CASTAGNOLI",
     "Cbor",
+    "chacha",
+    "chrono",
+    "Deque",
     "hasher",
+    "hashset",
     "ISCSI",
     "Kadex",
     "kadx",
     "omni",
     "reqwest",
+    "Seedable",
+    "sqlx",
     "Upnp"
   ]
 }

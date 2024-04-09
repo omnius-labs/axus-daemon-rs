@@ -3,7 +3,6 @@ name = "axus-engine"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
-build = "build.rs"
 
 [features]
 stable-test = []
@@ -46,10 +45,10 @@ bitflags = { workspace = true }
 tempfile = { workspace = true }
 reqwest = { workspace = true }
 crc = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }
-
-[build-dependencies]
-anyhow = { workspace = true }
-vergen = { workspace = true }
+testresult = { workspace = true }
