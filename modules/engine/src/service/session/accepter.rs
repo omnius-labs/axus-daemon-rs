@@ -119,6 +119,7 @@ impl AccepterTask {
                 _ = cancellation_token.cancelled() => {}
                 _ = async {
                     loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         let _ = self.accept().await;
                     }
                 } => {}
