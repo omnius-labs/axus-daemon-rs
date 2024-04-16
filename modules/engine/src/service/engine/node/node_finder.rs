@@ -3,24 +3,24 @@ use std::sync::Arc;
 use chrono::Duration;
 use core_base::clock::SystemClock;
 use futures::future::{join_all, JoinAll};
-use rand::{seq::SliceRandom, RngCore, SeedableRng};
+use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sqlx::types::chrono::Utc;
-use tokio::{select, sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{mpsc, Mutex},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     model::NodeProfile,
     service::{
-        session::{
-            model::{Session, SessionType},
-            SessionAccepter, SessionConnector,
-        },
+        session::{SessionAccepter, SessionConnector},
         util::VolatileHashSet,
     },
 };
 
-use super::{Communicator, NodeRefFetcher, NodeRefRepo};
+use super::{NodeRefFetcher, NodeRefRepo, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
 
 #[allow(dead_code)]
 pub struct NodeFinder {
@@ -32,6 +32,9 @@ pub struct NodeFinder {
     system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
     option: NodeFinderOptions,
     cancellation_token: CancellationToken,
+
+    session_receiver: Arc<Mutex<mpsc::Receiver<SessionStatus>>>,
+    session_sender: Arc<Mutex<mpsc::Sender<SessionStatus>>>,
     sessions: Arc<Mutex<Vec<SessionStatus>>>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     join_handles: Arc<Mutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
@@ -43,22 +46,6 @@ pub struct NodeFinderOptions {
     pub max_connected_session_count: usize,
     pub max_accepted_session_count: usize,
 }
-#[allow(dead_code)]
-struct SessionStatus {
-    id: Vec<u8>,
-    handshake_type: HandshakeType,
-    node_profile: NodeProfile,
-    session: Session,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum HandshakeType {
-    Unknown,
-    Connected,
-    Accepted,
-}
-
 impl NodeFinder {
     pub async fn new(
         session_connector: Arc<SessionConnector>,
@@ -69,6 +56,7 @@ impl NodeFinder {
         option: NodeFinderOptions,
     ) -> Self {
         let cancellation_token = CancellationToken::new();
+        let (tx, rx) = mpsc::channel(20);
 
         let result = Self {
             id: Arc::new(Self::gen_id()),
@@ -79,11 +67,14 @@ impl NodeFinder {
             system_clock: system_clock.clone(),
             option,
             cancellation_token,
+
+            session_receiver: Arc::new(Mutex::new(rx)),
+            session_sender: Arc::new(Mutex::new(tx)),
             sessions: Arc::new(Mutex::new(Vec::new())),
             connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), system_clock))),
             join_handles: Arc::new(Mutex::new(None)),
         };
-        result.create_tasks().await;
+        result.run().await;
 
         result
     }
@@ -95,20 +86,72 @@ impl NodeFinder {
         id.to_vec()
     }
 
-    async fn create_tasks(&self) {
+    async fn run(&self) {
         let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
         join_handles.extend(self.create_connect_task().await);
+        join_handles.extend(self.create_accept_task().await);
+        join_handles.extend(self.create_communicator_task().await);
+        join_handles.extend(self.create_computer_task().await);
 
         *self.join_handles.as_ref().lock().await = Some(join_all(join_handles));
     }
 
     async fn create_connect_task(&self) -> Vec<JoinHandle<()>> {
         let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = ConnectorTask {
+        let task = TaskConnector {
             sessions: self.sessions.clone(),
+            session_sender: self.session_sender.clone(),
             session_connector: self.session_connector.clone(),
             connected_node_profiles: self.connected_node_profiles.clone(),
             node_profile_repo: self.node_profile_repo.clone(),
+            option: self.option.clone(),
+        };
+
+        for _ in 0..3 {
+            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
+            join_handles.push(join_handle);
+        }
+
+        join_handles
+    }
+
+    async fn create_accept_task(&self) -> Vec<JoinHandle<()>> {
+        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
+        let task = TaskAccepter {
+            sessions: self.sessions.clone(),
+            session_sender: self.session_sender.clone(),
+            session_accepter: self.session_accepter.clone(),
+            option: self.option.clone(),
+        };
+
+        for _ in 0..3 {
+            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
+            join_handles.push(join_handle);
+        }
+
+        join_handles
+    }
+
+    async fn create_communicator_task(&self) -> Vec<JoinHandle<()>> {
+        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
+        let task = TaskCommunicator {
+            sessions: self.sessions.clone(),
+            session_receiver: self.session_receiver.clone(),
+            option: self.option.clone(),
+        };
+
+        for _ in 0..3 {
+            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
+            join_handles.push(join_handle);
+        }
+
+        join_handles
+    }
+
+    async fn create_computer_task(&self) -> Vec<JoinHandle<()>> {
+        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
+        let task = TaskComputer {
+            sessions: self.sessions.clone(),
             option: self.option.clone(),
         };
 
@@ -130,124 +173,3 @@ impl NodeFinder {
         Ok(())
     }
 }
-
-#[derive(Clone)]
-struct ConnectorTask {
-    sessions: Arc<Mutex<Vec<SessionStatus>>>,
-    session_connector: Arc<SessionConnector>,
-    connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
-    node_profile_repo: Arc<NodeRefRepo>,
-    option: NodeFinderOptions,
-}
-
-impl ConnectorTask {
-    pub async fn run(self, cancellation_token: CancellationToken) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            select! {
-                _ = cancellation_token.cancelled() => {}
-                _ = async {
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        let _ = self.connect().await;
-                    }
-                } => {}
-            }
-        })
-    }
-
-    async fn connect(&self) -> anyhow::Result<()> {
-        let session_count = self
-            .sessions
-            .lock()
-            .await
-            .iter()
-            .filter(|n| n.handshake_type == HandshakeType::Connected)
-            .count();
-        if session_count >= self.option.max_connected_session_count {
-            return Ok(());
-        }
-
-        self.connected_node_profiles.lock().await.refresh();
-
-        let mut rng = ChaCha20Rng::from_entropy();
-        let node_profiles = self.node_profile_repo.get_node_profiles().await?;
-        let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
-
-        if self.connected_node_profiles.lock().await.contains(node_profile) {
-            anyhow::bail!("Already connected");
-        }
-
-        for addr in node_profile.addrs.iter() {
-            let session = self.session_connector.connect(addr, &SessionType::NodeFinder).await?;
-            let (id, node_profile) = Communicator::handshake(&session).await?;
-            self.sessions.lock().await.push(SessionStatus {
-                id,
-                handshake_type: HandshakeType::Connected,
-                node_profile,
-                session,
-            });
-        }
-
-        self.connected_node_profiles.lock().await.insert(node_profile.clone());
-
-        Ok(())
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Clone)]
-struct AccepterTask {
-    sessions: Arc<Mutex<Vec<SessionStatus>>>,
-    session_accepter: Arc<SessionAccepter>,
-    option: NodeFinderOptions,
-}
-
-#[allow(dead_code)]
-impl AccepterTask {
-    pub async fn run(self, cancellation_token: CancellationToken) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            select! {
-                _ = cancellation_token.cancelled() => {}
-                _ = async {
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        let _ = self.accept().await;
-                    }
-                } => {}
-            }
-        })
-    }
-
-    async fn accept(&self) -> anyhow::Result<()> {
-        let session_count = self
-            .sessions
-            .lock()
-            .await
-            .iter()
-            .filter(|n| n.handshake_type == HandshakeType::Accepted)
-            .count();
-        if session_count >= self.option.max_accepted_session_count {
-            return Ok(());
-        }
-
-        let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
-
-        let (id, node_profile) = Communicator::handshake(&session).await?;
-        self.sessions.lock().await.push(SessionStatus {
-            id,
-            handshake_type: HandshakeType::Connected,
-            node_profile,
-            session,
-        });
-
-        Ok(())
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Clone)]
-struct SessionTask {}
-
-#[allow(dead_code)]
-#[derive(Clone)]
-struct ComputeTask {}
