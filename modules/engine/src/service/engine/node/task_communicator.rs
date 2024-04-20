@@ -56,8 +56,8 @@ impl TaskCommunicator {
             session,
             node_profile: node_profile.clone(),
 
-            sending_data_message: Arc::new(std::sync::Mutex::new(SendingDataMessage::default())),
-            received_data_message: Arc::new(std::sync::Mutex::new(ReceivedDataMessage::default())),
+            sending_data_message: Arc::new(StdMutex::new(SendingDataMessage::default())),
+            received_data_message: Arc::new(StdMutex::new(ReceivedDataMessage::default())),
         };
 
         let mut sessions = self.sessions.lock().unwrap();
