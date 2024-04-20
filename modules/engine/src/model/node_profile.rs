@@ -13,6 +13,6 @@ pub struct NodeProfile {
 impl fmt::Display for NodeProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let addrs: Vec<String> = self.addrs.iter().map(|n| n.to_string()).collect();
-        write!(f, "{}", addrs.join(", "))
+        write!(f, "id: {}, addrs: [{}]", hex::encode(&self.id), addrs.join(", "))
     }
 }

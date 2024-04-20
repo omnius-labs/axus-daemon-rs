@@ -4,7 +4,7 @@ use core_base::random_bytes::RandomBytesProvider;
 use futures_util::future::{join_all, JoinAll};
 use tokio::{
     select,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -26,10 +26,10 @@ pub struct SessionAccepter {
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
-    receivers: Arc<Mutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
-    senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+    receivers: Arc<TokioMutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
+    senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     cancellation_token: CancellationToken,
-    join_handles: Arc<Mutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
+    join_handles: Arc<TokioMutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
 }
 
 impl SessionAccepter {
@@ -39,8 +39,8 @@ impl SessionAccepter {
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
     ) -> Self {
         let cancellation_token = CancellationToken::new();
-        let senders = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
-        let receivers = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
+        let senders = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
+        let receivers = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
 
         for typ in [SessionType::NodeFinder].iter() {
             let (tx, rx) = mpsc::channel(20);
@@ -55,7 +55,7 @@ impl SessionAccepter {
             receivers,
             senders,
             cancellation_token,
-            join_handles: Arc::new(Mutex::new(None)),
+            join_handles: Arc::new(TokioMutex::new(None)),
         };
         result.create_tasks().await;
 
@@ -106,7 +106,7 @@ impl SessionAccepter {
 
 #[derive(Clone)]
 struct AccepterTask {
-    senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+    senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
@@ -129,7 +129,7 @@ impl AccepterTask {
 
     async fn accept(&self) -> anyhow::Result<()> {
         let (stream, addr) = self.tcp_connector.accept().await?;
-        let stream: Arc<Mutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(Mutex::new(stream));
+        let stream: Arc<TokioMutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(TokioMutex::new(stream));
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
         stream.lock().await.send_message(&send_hello_message).await?;

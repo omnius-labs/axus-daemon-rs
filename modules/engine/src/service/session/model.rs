@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::{
     model::{OmniAddress, OmniSignature},
@@ -22,5 +22,5 @@ pub struct Session {
     pub address: OmniAddress,
     pub handshake_type: SessionHandshakeType,
     pub signature: OmniSignature,
-    pub stream: Arc<Mutex<dyn AsyncSendRecv + Send + Sync + Unpin>>,
+    pub stream: Arc<TokioMutex<dyn AsyncSendRecv + Send + Sync + Unpin>>,
 }

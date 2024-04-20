@@ -1,21 +1,25 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use tokio::{
     select,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
-use crate::service::session::{model::SessionType, SessionAccepter};
+use crate::service::session::{
+    model::{Session, SessionType},
+    SessionAccepter,
+};
 
-use super::{Communicator, HandshakeType, NodeFinderOptions, SessionStatus};
+use super::{HandshakeType, NodeFinderOptions, SessionStatus};
 
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskAccepter {
-    pub sessions: Arc<Mutex<Vec<SessionStatus>>>,
-    pub session_sender: Arc<Mutex<mpsc::Sender<SessionStatus>>>,
+    pub sessions: Arc<StdMutex<Vec<SessionStatus>>>,
+    pub session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     pub session_accepter: Arc<SessionAccepter>,
     pub option: NodeFinderOptions,
 }
@@ -29,7 +33,10 @@ impl TaskAccepter {
                 _ = async {
                     loop {
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        let _ = self.accept().await;
+                        let res = self.accept().await;
+                        if let Err(e) = res {
+                            warn!("{:?}", e);
+                        }
                     }
                 } => {}
             }
@@ -40,7 +47,7 @@ impl TaskAccepter {
         let session_count = self
             .sessions
             .lock()
-            .await
+            .unwrap()
             .iter()
             .filter(|n| n.handshake_type == HandshakeType::Accepted)
             .count();
@@ -50,17 +57,7 @@ impl TaskAccepter {
 
         let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
 
-        let (id, node_profile) = Communicator::handshake(&session).await?;
-        self.session_sender
-            .lock()
-            .await
-            .send(SessionStatus {
-                id,
-                handshake_type: HandshakeType::Accepted,
-                node_profile,
-                session,
-            })
-            .await?;
+        self.session_sender.lock().await.send((HandshakeType::Accepted, session)).await?;
 
         Ok(())
     }

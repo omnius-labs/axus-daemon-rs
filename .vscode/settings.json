@@ -18,6 +18,8 @@
     "reqwest",
     "Seedable",
     "sqlx",
+    "tempdir",
+    "tempfile",
     "Upnp"
   ]
 }

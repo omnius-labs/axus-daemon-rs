@@ -3,15 +3,15 @@ use async_trait::async_trait;
 use crate::{model::NodeProfile, service::util::UriConverter};
 
 #[async_trait]
-pub trait NodeRefFetcher {
+pub trait NodeProfileFetcher {
     async fn fetch(&self) -> anyhow::Result<Vec<NodeProfile>>;
 }
 
-pub struct NodeFetcherImpl {
+pub struct NodeProfileFetcherImpl {
     urls: Vec<String>,
 }
 
-impl NodeFetcherImpl {
+impl NodeProfileFetcherImpl {
     pub fn new(urls: &[&str]) -> Self {
         Self {
             urls: urls.iter().map(|&n| n.to_string()).collect(),
@@ -20,7 +20,7 @@ impl NodeFetcherImpl {
 }
 
 #[async_trait]
-impl NodeRefFetcher for NodeFetcherImpl {
+impl NodeProfileFetcher for NodeProfileFetcherImpl {
     async fn fetch(&self) -> anyhow::Result<Vec<NodeProfile>> {
         let mut vs: Vec<NodeProfile> = vec![];
         let client = reqwest::Client::new();
@@ -37,5 +37,16 @@ impl NodeRefFetcher for NodeFetcherImpl {
         }
 
         Ok(vs)
+    }
+}
+
+pub struct NodeProfileFetcherMock {
+    pub node_profiles: Vec<NodeProfile>,
+}
+
+#[async_trait]
+impl NodeProfileFetcher for NodeProfileFetcherMock {
+    async fn fetch(&self) -> anyhow::Result<Vec<NodeProfile>> {
+        Ok(self.node_profiles.clone())
     }
 }

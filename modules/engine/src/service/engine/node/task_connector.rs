@@ -1,31 +1,35 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::{
     select,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
 use crate::{
     model::NodeProfile,
     service::{
-        session::{model::SessionType, SessionConnector},
+        session::{
+            model::{Session, SessionType},
+            SessionConnector,
+        },
         util::VolatileHashSet,
     },
 };
 
-use super::{Communicator, HandshakeType, NodeFinderOptions, NodeRefRepo, SessionStatus};
+use super::{HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskConnector {
-    pub sessions: Arc<Mutex<Vec<SessionStatus>>>,
-    pub session_sender: Arc<Mutex<mpsc::Sender<SessionStatus>>>,
+    pub sessions: Arc<StdMutex<Vec<SessionStatus>>>,
+    pub session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     pub session_connector: Arc<SessionConnector>,
-    pub connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
-    pub node_profile_repo: Arc<NodeRefRepo>,
+    pub connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
+    pub node_profile_repo: Arc<NodeProfileRepo>,
     pub option: NodeFinderOptions,
 }
 
@@ -37,7 +41,10 @@ impl TaskConnector {
                 _ = async {
                     loop {
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        let _ = self.connect().await;
+                        let res = self.connect().await;
+                        if let Err(e) = res {
+                            warn!("{:?}", e);
+                        }
                     }
                 } => {}
             }
@@ -48,7 +55,7 @@ impl TaskConnector {
         let session_count = self
             .sessions
             .lock()
-            .await
+            .unwrap()
             .iter()
             .filter(|n| n.handshake_type == HandshakeType::Connected)
             .count();
@@ -56,36 +63,26 @@ impl TaskConnector {
             return Ok(());
         }
 
-        self.connected_node_profiles.lock().await.refresh();
+        self.connected_node_profiles.lock().unwrap().refresh();
 
         let mut rng = ChaCha20Rng::from_entropy();
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
         let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
 
-        if self.sessions.lock().await.iter().any(|n| n.node_profile == *node_profile) {
+        if self.sessions.lock().unwrap().iter().any(|n| n.node_profile == *node_profile) {
             anyhow::bail!("Already connected");
         }
 
-        if self.connected_node_profiles.lock().await.contains(node_profile) {
+        if self.connected_node_profiles.lock().unwrap().contains(node_profile) {
             anyhow::bail!("Already connected");
         }
 
         for addr in node_profile.addrs.iter() {
-            let session = self.session_connector.connect(addr, &SessionType::NodeFinder).await?;
-            let (id, node_profile) = Communicator::handshake(&session).await?;
-            self.session_sender
-                .lock()
-                .await
-                .send(SessionStatus {
-                    id,
-                    handshake_type: HandshakeType::Connected,
-                    node_profile,
-                    session,
-                })
-                .await?;
+            if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
+                self.session_sender.lock().await.send((HandshakeType::Connected, session)).await?;
+                self.connected_node_profiles.lock().unwrap().insert(node_profile.clone());
+            }
         }
-
-        self.connected_node_profiles.lock().await.insert(node_profile.clone());
 
         Ok(())
     }

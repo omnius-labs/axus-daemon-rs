@@ -9,12 +9,12 @@ use sqlx::{sqlite::SqlitePool, Sqlite};
 use crate::service::util::{MigrationRequest, SqliteMigrator};
 use crate::{model::NodeProfile, service::util::UriConverter};
 
-pub struct NodeRefRepo {
+pub struct NodeProfileRepo {
     db: Arc<SqlitePool>,
     system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
 }
 
-impl NodeRefRepo {
+impl NodeProfileRepo {
     pub async fn new(dir_path: &str, system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
         let path = path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
@@ -102,7 +102,7 @@ mod tests {
 
     use crate::model::{NodeProfile, OmniAddress};
 
-    use super::NodeRefRepo;
+    use super::NodeProfileRepo;
 
     #[tokio::test]
     pub async fn simple_test() -> TestResult {
@@ -114,7 +114,7 @@ mod tests {
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into(),
         ];
         let clock = Arc::new(SystemClockUtcMock::new(vs));
-        let repo = NodeRefRepo::new(path, clock).await?;
+        let repo = NodeProfileRepo::new(path, clock).await?;
 
         let vs: Vec<NodeProfile> = vec![NodeProfile {
             id: vec![0],

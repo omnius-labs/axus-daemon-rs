@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use core_base::random_bytes::RandomBytesProvider;
-use tokio::sync::Mutex;
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::{
     model::{OmniAddress, OmniSigner},
@@ -37,7 +37,7 @@ impl SessionConnector {
 
     pub async fn connect(&self, address: &OmniAddress, typ: &SessionType) -> anyhow::Result<Session> {
         let stream = self.tcp_connector.connect(address.parse_tcp()?.as_str()).await?;
-        let stream: Arc<Mutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(Mutex::new(stream));
+        let stream: Arc<TokioMutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(TokioMutex::new(stream));
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
         stream.lock().await.send_message(&send_hello_message).await?;
