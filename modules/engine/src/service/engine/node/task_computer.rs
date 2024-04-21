@@ -9,7 +9,7 @@ use tracing::warn;
 
 use crate::{
     model::{AssetKey, NodeProfile},
-    service::util::{FnCaller, Kadex},
+    service::util::{FnExecutor, Kadex},
 };
 
 use super::{NodeFinderOptions, NodeProfileFetcher, NodeProfileRepo, SessionStatus};
@@ -21,8 +21,8 @@ pub struct TaskComputer {
     pub node_profile_repo: Arc<NodeProfileRepo>,
     pub node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     pub sessions: Arc<StdMutex<Vec<SessionStatus>>>,
-    pub get_want_asset_keys_fn: Arc<FnCaller<Vec<AssetKey>>>,
-    pub get_push_asset_keys_fn: Arc<FnCaller<Vec<AssetKey>>>,
+    pub get_want_asset_keys_fn: Arc<FnExecutor<Vec<AssetKey>, ()>>,
+    pub get_push_asset_keys_fn: Arc<FnExecutor<Vec<AssetKey>, ()>>,
     pub option: NodeFinderOptions,
 }
 
@@ -67,8 +67,8 @@ impl TaskComputer {
         let my_node_profile = self.my_node_profile.lock().unwrap().clone();
         let cloud_node_profile = self.node_profile_repo.get_node_profiles().await?;
 
-        let my_get_want_asset_keys: HashSet<AssetKey> = self.get_want_asset_keys_fn.call().into_iter().flatten().collect();
-        let my_get_push_asset_keys: HashSet<AssetKey> = self.get_push_asset_keys_fn.call().into_iter().flatten().collect();
+        let my_get_want_asset_keys: HashSet<AssetKey> = self.get_want_asset_keys_fn.execute(&()).into_iter().flatten().collect();
+        let my_get_push_asset_keys: HashSet<AssetKey> = self.get_push_asset_keys_fn.execute(&()).into_iter().flatten().collect();
 
         let sessions = self.sessions.lock().unwrap();
 

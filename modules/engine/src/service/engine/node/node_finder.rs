@@ -16,7 +16,7 @@ use crate::{
     model::{AssetKey, NodeProfile},
     service::{
         session::{model::Session, SessionAccepter, SessionConnector},
-        util::{FnPipe, VolatileHashSet},
+        util::{FnHub, VolatileHashSet},
     },
 };
 
@@ -37,8 +37,8 @@ pub struct NodeFinder {
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     sessions: Arc<StdMutex<Vec<SessionStatus>>>,
     connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
-    get_want_asset_keys_fn: Arc<FnPipe<Vec<AssetKey>>>,
-    get_push_asset_keys_fn: Arc<FnPipe<Vec<AssetKey>>>,
+    get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
+    get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     join_handles: Arc<TokioMutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
 }
 
@@ -77,8 +77,8 @@ impl NodeFinder {
             session_sender: Arc::new(TokioMutex::new(tx)),
             sessions: Arc::new(StdMutex::new(Vec::new())),
             connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), system_clock))),
-            get_want_asset_keys_fn: Arc::new(FnPipe::new()),
-            get_push_asset_keys_fn: Arc::new(FnPipe::new()),
+            get_want_asset_keys_fn: Arc::new(FnHub::new()),
+            get_push_asset_keys_fn: Arc::new(FnHub::new()),
             join_handles: Arc::new(TokioMutex::new(None)),
         };
         result.run().await;
@@ -167,8 +167,8 @@ impl NodeFinder {
             node_profile_repo: self.node_profile_repo.clone(),
             node_profile_fetcher: self.node_profile_fetcher.clone(),
             sessions: self.sessions.clone(),
-            get_want_asset_keys_fn: Arc::new(self.get_want_asset_keys_fn.caller()),
-            get_push_asset_keys_fn: Arc::new(self.get_push_asset_keys_fn.caller()),
+            get_want_asset_keys_fn: Arc::new(self.get_want_asset_keys_fn.executor()),
+            get_push_asset_keys_fn: Arc::new(self.get_push_asset_keys_fn.executor()),
             option: self.option.clone(),
         };
 
