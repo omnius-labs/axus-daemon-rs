@@ -123,22 +123,22 @@ impl TaskComputer {
         }
 
         // Kadexの距離が近いノードにwant_asset_keyを配布する
-        let mut sending_want_asset_key_map: HashMap<&Vec<u8>, Vec<&AssetKey>> = HashMap::new();
-        let ids: &[&Vec<u8>] = &sessions.iter().map(|n| &n.node_profile.id).collect::<Vec<&Vec<u8>>>();
+        let mut sending_want_asset_key_map: HashMap<&[u8], Vec<&AssetKey>> = HashMap::new();
+        let ids: Vec<&[u8]> = sessions.iter().map(|n| n.node_profile.id.as_slice()).collect();
         for target_key in &want_asset_keys {
-            for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, ids, 1) {
+            for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
                 sending_want_asset_key_map.entry(id).or_default().push(target_key);
             }
         }
 
         // want_asset_keyを受け取ったノードにgive_asset_key_locationsを配布する
-        let mut sending_give_asset_key_location_map: HashMap<&Vec<u8>, HashMap<&AssetKey, Vec<&NodeProfile>>> = HashMap::new();
+        let mut sending_give_asset_key_location_map: HashMap<&[u8], HashMap<&AssetKey, Vec<&NodeProfile>>> = HashMap::new();
         for session in sessions.iter() {
             let received_data_message = session.received_data_message.lock().unwrap();
             for target_key in &received_data_message.want_asset_keys {
                 if let Some((target_key, node_profiles)) = give_asset_key_locations.get_key_value(target_key) {
                     sending_give_asset_key_location_map
-                        .entry(&session.node_profile.id)
+                        .entry(session.node_profile.id.as_slice())
                         .or_default()
                         .insert(target_key, node_profiles.iter().collect());
                 }
@@ -146,10 +146,10 @@ impl TaskComputer {
         }
 
         // Kadexの距離が近いノードにpush_asset_key_locationsを配布する
-        let mut sending_push_asset_key_location_map: HashMap<&Vec<u8>, HashMap<&AssetKey, Vec<&NodeProfile>>> = HashMap::new();
-        let ids: &[&Vec<u8>] = &sessions.iter().map(|n| &n.node_profile.id).collect::<Vec<&Vec<u8>>>();
+        let mut sending_push_asset_key_location_map: HashMap<&[u8], HashMap<&AssetKey, Vec<&NodeProfile>>> = HashMap::new();
+        let ids: Vec<&[u8]> = sessions.iter().map(|n| n.node_profile.id.as_slice()).collect();
         for (target_key, node_profiles) in push_asset_key_locations.iter() {
-            for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, ids, 1) {
+            for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
                 sending_push_asset_key_location_map
                     .entry(id)
                     .or_default()
@@ -161,19 +161,19 @@ impl TaskComputer {
             let mut data_message = session.sending_data_message.lock().unwrap();
             data_message.push_node_profiles = push_node_profiles.clone().into_iter().collect();
             data_message.want_asset_keys = sending_want_asset_key_map
-                .get(&session.node_profile.id)
+                .get(session.node_profile.id.as_slice())
                 .unwrap_or(&Vec::new())
                 .iter()
                 .map(|n| (*n).clone())
                 .collect();
             data_message.give_asset_key_locations = sending_give_asset_key_location_map
-                .get(&session.node_profile.id)
+                .get(session.node_profile.id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .map(|(k, v)| ((*k).clone(), v.iter().map(|n| (*n).clone()).collect()))
                 .collect();
             data_message.push_asset_key_locations = sending_push_asset_key_location_map
-                .get(&session.node_profile.id)
+                .get(session.node_profile.id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .map(|(k, v)| ((*k).clone(), v.iter().map(|n| (*n).clone()).collect()))
