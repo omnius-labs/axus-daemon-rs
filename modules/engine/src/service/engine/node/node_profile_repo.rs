@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
-use core_base::clock::SystemClock;
+use core_base::clock::Clock;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::QueryBuilder;
 use sqlx::{sqlite::SqlitePool, Sqlite};
@@ -11,11 +11,11 @@ use crate::{model::NodeProfile, service::util::UriConverter};
 
 pub struct NodeProfileRepo {
     db: Arc<SqlitePool>,
-    system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
 impl NodeProfileRepo {
-    pub async fn new(dir_path: &str, system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
+    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
         let path = path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
         let url = format!("sqlite:{}", path);
@@ -25,7 +25,7 @@ impl NodeProfileRepo {
         }
 
         let db = Arc::new(SqlitePool::connect(&url).await?);
-        let res = Self { db, system_clock };
+        let res = Self { db, clock };
 
         res.migrate().await?;
 
@@ -77,7 +77,7 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
 "#,
         );
 
-        let now = self.system_clock.now().timestamp();
+        let now = self.clock.now().timestamp();
         let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
 
         query_builder.push_values(vs, |mut b, v| {
@@ -96,8 +96,8 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
 mod tests {
     use std::sync::Arc;
 
-    use chrono::{DateTime, Utc};
-    use core_base::clock::SystemClockUtcMock;
+    use chrono::DateTime;
+    use core_base::clock::FakeClockUtc;
     use testresult::TestResult;
 
     use crate::model::{NodeProfile, OmniAddress};
@@ -109,11 +109,7 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let path = dir.path().as_os_str().to_str().unwrap();
 
-        let vs: Vec<DateTime<Utc>> = vec![
-            DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into(),
-            DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into(),
-        ];
-        let clock = Arc::new(SystemClockUtcMock::new(vs));
+        let clock = Arc::new(FakeClockUtc::new(DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into()));
         let repo = NodeProfileRepo::new(path, clock).await?;
 
         let vs: Vec<NodeProfile> = vec![NodeProfile {

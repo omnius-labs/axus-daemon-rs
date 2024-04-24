@@ -1,13 +1,12 @@
 use std::sync::{Arc, Mutex as StdMutex};
 
-use chrono::Duration;
-use core_base::clock::SystemClock;
+use chrono::{Duration, Utc};
+use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::future::{join_all, JoinAll};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use sqlx::types::chrono::Utc;
 use tokio::{
-    sync::{mpsc, Mutex as TokioMutex},
+    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -29,13 +28,14 @@ pub struct NodeFinder {
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeProfileRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-    system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOptions,
     cancellation_token: CancellationToken,
 
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
-    sessions: Arc<StdMutex<Vec<SessionStatus>>>,
+    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
     connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
@@ -48,13 +48,15 @@ pub struct NodeFinderOptions {
     pub max_connected_session_count: usize,
     pub max_accepted_session_count: usize,
 }
+
 impl NodeFinder {
     pub async fn new(
         session_connector: Arc<SessionConnector>,
         session_accepter: Arc<SessionAccepter>,
         node_profile_repo: Arc<NodeProfileRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-        system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOptions,
     ) -> Self {
         let cancellation_token = CancellationToken::new();
@@ -69,14 +71,15 @@ impl NodeFinder {
             session_accepter,
             node_profile_repo,
             node_profile_fetcher,
-            system_clock: system_clock.clone(),
+            clock: clock.clone(),
+            sleeper,
             option,
             cancellation_token,
 
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
-            sessions: Arc::new(StdMutex::new(Vec::new())),
-            connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), system_clock))),
+            sessions: Arc::new(TokioRwLock::new(Vec::new())),
+            connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
             join_handles: Arc::new(TokioMutex::new(None)),
@@ -87,7 +90,7 @@ impl NodeFinder {
     }
 
     pub async fn get_session_count(&self) -> usize {
-        self.sessions.lock().unwrap().len()
+        self.sessions.read().await.len()
     }
 
     fn gen_id() -> Vec<u8> {
@@ -149,6 +152,8 @@ impl NodeFinder {
             my_node_profile: self.my_node_profile.clone(),
             sessions: self.sessions.clone(),
             session_receiver: self.session_receiver.clone(),
+            clock: self.clock.clone(),
+            sleeper: self.sleeper.clone(),
             option: self.option.clone(),
         };
 
@@ -197,10 +202,12 @@ mod tests {
 
     use chrono::Utc;
     use core_base::{
-        clock::{SystemClock, SystemClockUtc},
+        clock::{Clock, RealClockUtc},
         random_bytes::RandomBytesProviderImpl,
+        sleeper::{FakeSleeper, Sleeper},
     };
     use testresult::TestResult;
+    use tracing::info;
 
     use crate::{
         model::{NodeProfile, OmniAddress, OmniSignType, OmniSigner},
@@ -246,9 +253,9 @@ mod tests {
                 break;
             }
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            println!("wait");
+            info!("wait");
         }
-        println!("done");
+        info!("done");
 
         nf1.terminate().await?;
         nf2.terminate().await?;
@@ -272,13 +279,14 @@ mod tests {
         let session_accepter = Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone()).await);
         let session_connector = Arc::new(SessionConnector::new(tcp_connector, signer, random_bytes_provider));
 
-        let system_clock: Arc<dyn SystemClock<Utc> + Send + Sync> = Arc::new(SystemClockUtc);
+        let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
+        let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(FakeSleeper);
         let node_ref_repo_dir = dir_path.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
 
-        let node_ref_repo = Arc::new(NodeProfileRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), system_clock.clone()).await?);
+        let node_profile_repo = Arc::new(NodeProfileRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), clock.clone()).await?);
 
-        let node_ref_fetcher = Arc::new(NodeProfileFetcherMock {
+        let node_profile_fetcher = Arc::new(NodeProfileFetcherMock {
             node_profiles: vec![other_node_profile],
         });
 
@@ -288,9 +296,10 @@ mod tests {
         let result = NodeFinder::new(
             session_connector,
             session_accepter,
-            node_ref_repo,
-            node_ref_fetcher,
-            system_clock,
+            node_profile_repo,
+            node_profile_fetcher,
+            clock,
+            sleeper,
             NodeFinderOptions {
                 state_dir_path: node_finder_dir.as_os_str().to_str().unwrap().to_string(),
                 max_connected_session_count: 3,

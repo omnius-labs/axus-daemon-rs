@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use async_trait::async_trait;
 use futures_util::SinkExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -14,6 +15,7 @@ use crate::service::util::Cbor;
 pub trait AsyncSendRecv {
     async fn send(&mut self, buffer: Bytes) -> anyhow::Result<()>;
     async fn recv(&mut self) -> anyhow::Result<Bytes>;
+    async fn close(&mut self) -> anyhow::Result<()>;
 }
 
 #[async_trait]
@@ -45,13 +47,18 @@ where
     T: AsyncRead + AsyncWrite + Send + Sync + Unpin,
 {
     async fn send(&mut self, buffer: Bytes) -> anyhow::Result<()> {
-        self.framed.send(buffer).await?;
+        self.framed.send(buffer).await.with_context(|| "Failed to send")?;
         Ok(())
     }
 
     async fn recv(&mut self) -> anyhow::Result<Bytes> {
         let buffer = self.framed.next().await.ok_or(anyhow::anyhow!("Stream ended"))??.freeze();
         Ok(buffer)
+    }
+
+    async fn close(&mut self) -> anyhow::Result<()> {
+        self.framed.close().await.with_context(|| "Failed to close")?;
+        Ok(())
     }
 }
 

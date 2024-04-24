@@ -2,7 +2,7 @@ use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Duration, Utc};
-use core_base::clock::SystemClock;
+use core_base::clock::Clock;
 
 struct ValueEntry<T> {
     pub value: T,
@@ -12,23 +12,23 @@ struct ValueEntry<T> {
 pub struct VolatileHashMap<K, V> {
     map: HashMap<K, ValueEntry<V>>,
     expired_time: Duration,
-    system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
 impl<K, V> VolatileHashMap<K, V>
 where
     K: Hash + Eq,
 {
-    pub fn new(expired_time: Duration, system_clock: Arc<dyn SystemClock<Utc> + Send + Sync>) -> Self {
+    pub fn new(expired_time: Duration, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
         Self {
             map: HashMap::new(),
             expired_time,
-            system_clock: system_clock.clone(),
+            clock: clock.clone(),
         }
     }
 
     pub fn refresh(&mut self) {
-        let now = self.system_clock.now();
+        let now = self.clock.now();
         let expired_time = self.expired_time;
         self.map.retain(|_, v| now - v.created_time < expired_time);
     }
@@ -38,7 +38,7 @@ where
             key,
             ValueEntry {
                 value,
-                created_time: self.system_clock.now(),
+                created_time: self.clock.now(),
             },
         );
     }

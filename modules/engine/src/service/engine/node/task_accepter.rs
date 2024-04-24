@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use tokio::{
     select,
-    sync::{mpsc, Mutex as TokioMutex},
+    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -18,7 +18,7 @@ use super::{HandshakeType, NodeFinderOptions, SessionStatus};
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskAccepter {
-    pub sessions: Arc<StdMutex<Vec<SessionStatus>>>,
+    pub sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
     pub session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     pub session_accepter: Arc<SessionAccepter>,
     pub option: NodeFinderOptions,
@@ -46,8 +46,8 @@ impl TaskAccepter {
     async fn accept(&self) -> anyhow::Result<()> {
         let session_count = self
             .sessions
-            .lock()
-            .unwrap()
+            .read()
+            .await
             .iter()
             .filter(|n| n.handshake_type == HandshakeType::Accepted)
             .count();

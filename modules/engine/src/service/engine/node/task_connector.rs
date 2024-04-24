@@ -4,7 +4,7 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::{
     select,
-    sync::{mpsc, Mutex as TokioMutex},
+    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -25,7 +25,7 @@ use super::{HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskConnector {
-    pub sessions: Arc<StdMutex<Vec<SessionStatus>>>,
+    pub sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
     pub session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     pub session_connector: Arc<SessionConnector>,
     pub connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
@@ -54,8 +54,8 @@ impl TaskConnector {
     async fn connect(&self) -> anyhow::Result<()> {
         let session_count = self
             .sessions
-            .lock()
-            .unwrap()
+            .read()
+            .await
             .iter()
             .filter(|n| n.handshake_type == HandshakeType::Connected)
             .count();
@@ -69,12 +69,12 @@ impl TaskConnector {
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
         let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
 
-        if self.sessions.lock().unwrap().iter().any(|n| n.node_profile == *node_profile) {
-            anyhow::bail!("Already connected");
+        if self.sessions.read().await.iter().any(|n| n.node_profile.id == node_profile.id) {
+            anyhow::bail!("Already connected 1");
         }
 
         if self.connected_node_profiles.lock().unwrap().contains(node_profile) {
-            anyhow::bail!("Already connected");
+            anyhow::bail!("Already connected 2");
         }
 
         for addr in node_profile.addrs.iter() {
