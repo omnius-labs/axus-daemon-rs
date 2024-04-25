@@ -12,9 +12,9 @@ use super::UpnpClient;
 
 #[async_trait]
 pub trait ConnectionTcpAccepter {
+    async fn terminate(&self) -> anyhow::Result<()>;
     async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)>;
     async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>>;
-    async fn terminate(&self) -> anyhow::Result<()>;
 }
 
 pub struct ConnectionTcpAccepterImpl {
@@ -54,6 +54,13 @@ impl ConnectionTcpAccepterImpl {
 
 #[async_trait]
 impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
+            upnp_port_mapping.terminate().await?;
+        }
+        Ok(())
+    }
+
     async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
         let stream = Stream::new(stream);
@@ -79,13 +86,6 @@ impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
         }
 
         Ok(res)
-    }
-
-    async fn terminate(&self) -> anyhow::Result<()> {
-        if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
-            upnp_port_mapping.terminate().await?;
-        }
-        Ok(())
     }
 }
 

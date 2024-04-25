@@ -3,8 +3,12 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 
-use tokio::{select, sync::RwLock as TokioRwLock, task::JoinHandle};
-use tokio_util::sync::CancellationToken;
+use core_base::sleeper::Sleeper;
+use futures::FutureExt;
+use tokio::{
+    sync::{Mutex as TokioMutex, RwLock as TokioRwLock},
+    task::JoinHandle,
+};
 use tracing::warn;
 
 use crate::{
@@ -12,53 +16,86 @@ use crate::{
     service::util::{FnExecutor, Kadex},
 };
 
-use super::{NodeFinderOptions, NodeProfileFetcher, NodeProfileRepo, ReceivedDataMessage, SendingDataMessage, SessionStatus};
+use super::{NodeProfileFetcher, NodeProfileRepo, ReceivedDataMessage, SendingDataMessage, SessionStatus};
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskComputer {
-    pub my_node_profile: Arc<StdMutex<NodeProfile>>,
-    pub node_profile_repo: Arc<NodeProfileRepo>,
-    pub node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-    pub sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
-    pub get_want_asset_keys_fn: Arc<FnExecutor<Vec<AssetKey>, ()>>,
-    pub get_push_asset_keys_fn: Arc<FnExecutor<Vec<AssetKey>, ()>>,
-    pub option: NodeFinderOptions,
+    inner: TaskComputerInner,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
+    join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
 
-#[allow(dead_code)]
 impl TaskComputer {
-    pub async fn run(self, cancellation_token: CancellationToken) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            select! {
-                _ = cancellation_token.cancelled() => {}
-                _ = async {
-                    let res = self.set_initial_node_profile().await;
-                    if let Err(e) = res {
-                        warn!("{:?}", e);
-                    }
-
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        let res = self.compute().await;
-                        if let Err(e) = res {
-                            warn!("{:?}", e);
-                        }
-                    }
-                } => {}
-            }
-        })
+    pub fn new(
+        my_node_profile: Arc<StdMutex<NodeProfile>>,
+        node_profile_repo: Arc<NodeProfileRepo>,
+        node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
+        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+        get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+    ) -> Self {
+        let inner = TaskComputerInner {
+            my_node_profile,
+            node_profile_repo,
+            node_profile_fetcher,
+            sessions,
+            get_want_asset_keys_fn,
+            get_push_asset_keys_fn,
+        };
+        Self {
+            inner,
+            sleeper,
+            join_handle: Arc::new(TokioMutex::new(None)),
+        }
     }
 
-    async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
+    pub async fn run(&self) {
+        let sleeper = self.sleeper.clone();
+        let inner = self.inner.clone();
+        let join_handle = tokio::spawn(async move {
+            if let Err(e) = inner.set_initial_node_profile().await {
+                warn!("{:?}", e);
+            }
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(60)).await;
+                let res = inner.compute().await;
+                if let Err(e) = res {
+                    warn!("{:?}", e);
+                }
+            }
+        });
+        *self.join_handle.lock().await = Some(join_handle);
+    }
+
+    pub async fn terminate(&self) {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TaskComputerInner {
+    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
+    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+    get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+}
+
+impl TaskComputerInner {
+    pub async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
         let node_profile = self.node_profile_fetcher.fetch().await?;
         self.node_profile_repo.insert_bulk_node_profile(&node_profile, 0).await?;
 
         Ok(())
     }
 
-    async fn compute(&self) -> anyhow::Result<()> {
-        // self.compute_sending_data_message().await?;
+    pub async fn compute(&self) -> anyhow::Result<()> {
+        self.compute_sending_data_message().await?;
 
         Ok(())
     }
@@ -77,6 +114,8 @@ impl TaskComputer {
                 session_map.insert(session.node_profile.id.clone(), session.received_data_message.clone());
             }
         }
+
+        let ids: Vec<&[u8]> = session_map.keys().map(|n| n.as_slice()).collect();
 
         // 全ノードに配布する情報
         let mut push_node_profiles: HashSet<&NodeProfile> = HashSet::new();
@@ -116,7 +155,6 @@ impl TaskComputer {
 
         // Kadexの距離が近いノードにwant_asset_keyを配布する
         let mut sending_want_asset_key_map: HashMap<&[u8], Vec<&AssetKey>> = HashMap::new();
-        let ids: Vec<&[u8]> = session_map.keys().map(|n| n.as_slice()).collect();
         for target_key in want_asset_keys {
             for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
                 sending_want_asset_key_map.entry(id).or_default().push(target_key);
@@ -138,7 +176,6 @@ impl TaskComputer {
 
         // Kadexの距離が近いノードにpush_asset_key_locationsを配布する
         let mut sending_push_asset_key_location_map: HashMap<&[u8], HashMap<&AssetKey, &HashSet<&NodeProfile>>> = HashMap::new();
-        let ids: Vec<&[u8]> = session_map.keys().map(|n| n.as_slice()).collect();
         for (target_key, node_profiles) in push_asset_key_locations.iter() {
             for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
                 sending_push_asset_key_location_map

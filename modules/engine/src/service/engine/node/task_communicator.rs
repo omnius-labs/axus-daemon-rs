@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex as StdMutex};
 
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
+use futures::FutureExt;
 use tokio::{
     select,
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -21,89 +22,136 @@ use crate::{
 
 use super::{Communicator, HandshakeType, NodeFinderOptions, SessionStatus};
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskCommunicator {
-    pub my_node_profile: Arc<StdMutex<NodeProfile>>,
-    pub sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
-    pub session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
-    pub clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    pub sleeper: Arc<dyn Sleeper + Send + Sync>,
-    pub option: NodeFinderOptions,
+    session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
+    inner: TaskCommunicatorInner,
+    join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+    wait_group: Arc<WaitGroup>,
+    cancellation_token: CancellationToken,
+}
+
+impl TaskCommunicator {
+    pub fn new(
+        my_node_profile: Arc<StdMutex<NodeProfile>>,
+        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+        option: NodeFinderOptions,
+    ) -> Self {
+        let wait_group = Arc::new(WaitGroup::new());
+        let cancellation_token = CancellationToken::new();
+        let inner = TaskCommunicatorInner {
+            my_node_profile,
+            sessions,
+            clock,
+            option,
+            sleeper,
+            wait_group: wait_group.clone(),
+            cancellation_token: cancellation_token.clone(),
+        };
+        Self {
+            session_receiver,
+            inner,
+            join_handle: Arc::new(TokioMutex::new(None)),
+            wait_group,
+            cancellation_token,
+        }
+    }
+
+    pub async fn run(&self) {
+        let session_receiver = self.session_receiver.clone();
+        let inner = self.inner.clone();
+        let join_handle = tokio::spawn(async move {
+            loop {
+                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
+                    let res = inner.clone().communicate(handshake_type, session);
+                    if let Err(e) = res {
+                        warn!("{:?}", e);
+                    }
+                }
+            }
+        });
+        *self.join_handle.lock().await = Some(join_handle);
+    }
+
+    pub async fn terminate(&self) {
+        self.cancellation_token.cancel();
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+        self.wait_group.wait().await;
+    }
 }
 
 #[allow(dead_code)]
-impl TaskCommunicator {
-    pub async fn run(self, cancellation_token: CancellationToken) -> JoinHandle<()> {
-        let wait_group = Arc::new(WaitGroup::new());
-        tokio::spawn(async move {
-            select! {
-                _ = cancellation_token.cancelled() => {}
-                _ = async {
-                    loop {
-                        if let Some((handshake_type, session)) = self.session_receiver.lock().await.recv().await {
-                            let my_node_profile = self.my_node_profile.clone();
-                            let sessions = self.sessions.clone();
-                            let clock = self.clock.clone();
-                            let sleeper = self.sleeper.clone();
-                            let cancellation_token = cancellation_token.clone();
-                            let wait_group = wait_group.clone();
-                            Self::create_session(my_node_profile, sessions, handshake_type, session, clock, sleeper, cancellation_token, wait_group).await;
-                        }
-                    }
-                } => {}
-            }
-            wait_group.wait().await;
-        })
-    }
+#[derive(Clone)]
+struct TaskCommunicatorInner {
+    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
+    option: NodeFinderOptions,
 
-    #[allow(clippy::too_many_arguments)]
-    async fn create_session(
+    wait_group: Arc<WaitGroup>,
+    cancellation_token: CancellationToken,
+}
+
+#[allow(dead_code)]
+impl TaskCommunicatorInner {
+    pub fn new(
         my_node_profile: Arc<StdMutex<NodeProfile>>,
         sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
-        handshake_type: HandshakeType,
-        session: Session,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
-        cancellation_token: CancellationToken,
-        wait_group: Arc<WaitGroup>,
-    ) -> JoinHandle<()> {
-        wait_group.add(1);
+        option: NodeFinderOptions,
+    ) -> Self {
+        Self {
+            my_node_profile,
+            sessions,
+            clock,
+            sleeper,
+            option,
+
+            wait_group: Arc::new(WaitGroup::new()),
+            cancellation_token: CancellationToken::new(),
+        }
+    }
+
+    pub fn communicate(self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
+        self.wait_group.add(1);
         tokio::spawn(async move {
             select! {
-                _ = cancellation_token.cancelled() => {}
+                _ = self.cancellation_token.cancelled() => {}
                 _ = async {
-                    let res = Self::create_session_sub(my_node_profile, sessions, handshake_type, session, clock, sleeper, cancellation_token.clone()).await;
+                    let res = self.communicate_sub(handshake_type, session).await;
                     if let Err(e) = res {
                         warn!("{:?}", e);
                     }
                 } => {}
             }
-            wait_group.done().await;
-        })
+            self.wait_group.done().await;
+        });
+        Ok(())
     }
 
-    async fn create_session_sub(
-        my_node_profile: Arc<StdMutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
-        handshake_type: HandshakeType,
-        session: Session,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-        cancellation_token: CancellationToken,
-    ) -> anyhow::Result<()> {
-        let my_node_profile = my_node_profile.lock().unwrap().clone();
+    async fn communicate_sub(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
+        let my_node_profile = self.my_node_profile.lock().unwrap().clone();
+
         let node_profile = Communicator::handshake(&session, &my_node_profile).await?;
+
         let status = SessionStatus {
             handshake_type,
             session,
             node_profile: node_profile.clone(),
             sending_data_message: Arc::new(SendingDataMessage::default()),
-            received_data_message: Arc::new(ReceivedDataMessage::new(clock)),
+            received_data_message: Arc::new(ReceivedDataMessage::new(self.clock.clone())),
         };
 
         {
-            let mut sessions = sessions.write().await;
+            let mut sessions = self.sessions.write().await;
             if sessions.iter().any(|n| n.node_profile.id == node_profile.id) {
                 return Err(anyhow::anyhow!("Session already exists"));
             }
@@ -112,15 +160,18 @@ impl TaskCommunicator {
 
         info!("Session established: {}", status.node_profile);
 
-        let send = Self::send(status.clone(), sleeper.clone(), cancellation_token.clone());
-        let receive = Self::receive(status.clone(), sleeper.clone(), cancellation_token.clone());
+        let send = self.send(&status);
+        let receive = self.receive(&status);
 
         let _ = tokio::join!(send, receive);
 
         Ok(())
     }
 
-    async fn send(status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+    fn send(&self, status: &SessionStatus) -> JoinHandle<()> {
+        let status = status.clone();
+        let sleeper = self.sleeper.clone();
+        let cancellation_token = self.cancellation_token.clone();
         tokio::spawn(async move {
             select! {
                 _ = cancellation_token.cancelled() => {}
@@ -136,11 +187,15 @@ impl TaskCommunicator {
 
     async fn send_sub(_status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
         loop {
-            sleeper.sleep(Duration::seconds(1).to_std().unwrap()).await;
+            sleeper.sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 
-    async fn receive(status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+    fn receive(&self, status: &SessionStatus) -> JoinHandle<()> {
+        let status = status.clone();
+        let clock = self.clock.clone();
+        let sleeper = self.sleeper.clone();
+        let cancellation_token = self.cancellation_token.clone();
         tokio::spawn(async move {
             select! {
                 _ = cancellation_token.cancelled() => {}
@@ -154,9 +209,14 @@ impl TaskCommunicator {
         })
     }
 
-    async fn receive_sub(_status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
+    async fn receive_sub(
+        status: SessionStatus,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+    ) -> anyhow::Result<()> {
         loop {
-            sleeper.sleep(Duration::seconds(1).to_std().unwrap()).await;
+            sleeper.sleep(std::time::Duration::from_secs(1)).await;
+            status.received_data_message = Arc::new(ReceivedDataMessage::new(clock.clone()));
         }
     }
 }

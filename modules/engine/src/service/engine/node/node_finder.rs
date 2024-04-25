@@ -2,14 +2,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use chrono::{Duration, Utc};
 use core_base::{clock::Clock, sleeper::Sleeper};
-use futures::future::{join_all, JoinAll};
+use futures::future::join_all;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use tokio::{
-    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
-    task::JoinHandle,
-};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -31,7 +27,6 @@ pub struct NodeFinder {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOptions,
-    cancellation_token: CancellationToken,
 
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
@@ -39,7 +34,11 @@ pub struct NodeFinder {
     connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
-    join_handles: Arc<TokioMutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
+
+    task_connectors: Arc<TokioMutex<Vec<TaskConnector>>>,
+    task_acceptors: Arc<TokioMutex<Vec<TaskAccepter>>>,
+    task_computer: Arc<TokioMutex<Option<TaskComputer>>>,
+    task_communicator: Arc<TokioMutex<Option<TaskCommunicator>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +58,6 @@ impl NodeFinder {
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOptions,
     ) -> Self {
-        let cancellation_token = CancellationToken::new();
         let (tx, rx) = mpsc::channel(20);
 
         let result = Self {
@@ -74,7 +72,6 @@ impl NodeFinder {
             clock: clock.clone(),
             sleeper,
             option,
-            cancellation_token,
 
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
@@ -82,7 +79,11 @@ impl NodeFinder {
             connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
-            join_handles: Arc::new(TokioMutex::new(None)),
+
+            task_connectors: Arc::new(TokioMutex::new(Vec::new())),
+            task_acceptors: Arc::new(TokioMutex::new(Vec::new())),
+            task_computer: Arc::new(TokioMutex::new(None)),
+            task_communicator: Arc::new(TokioMutex::new(None)),
         };
         result.run().await;
 
@@ -101,95 +102,81 @@ impl NodeFinder {
     }
 
     async fn run(&self) {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        join_handles.extend(self.create_connect_task().await);
-        join_handles.extend(self.create_accept_task().await);
-        join_handles.extend(self.create_communicator_task().await);
-        join_handles.extend(self.create_computer_task().await);
-
-        *self.join_handles.as_ref().lock().await = Some(join_all(join_handles));
-    }
-
-    async fn create_connect_task(&self) -> Vec<JoinHandle<()>> {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = TaskConnector {
-            sessions: self.sessions.clone(),
-            session_sender: self.session_sender.clone(),
-            session_connector: self.session_connector.clone(),
-            connected_node_profiles: self.connected_node_profiles.clone(),
-            node_profile_repo: self.node_profile_repo.clone(),
-            option: self.option.clone(),
-        };
-
         for _ in 0..3 {
-            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
-            join_handles.push(join_handle);
+            let task = TaskConnector::new(
+                self.sessions.clone(),
+                self.session_sender.clone(),
+                self.session_connector.clone(),
+                self.connected_node_profiles.clone(),
+                self.node_profile_repo.clone(),
+                self.sleeper.clone(),
+                self.option.clone(),
+            );
+            task.run().await;
+            self.task_connectors.lock().await.push(task);
         }
 
-        join_handles
-    }
-
-    async fn create_accept_task(&self) -> Vec<JoinHandle<()>> {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = TaskAccepter {
-            sessions: self.sessions.clone(),
-            session_sender: self.session_sender.clone(),
-            session_accepter: self.session_accepter.clone(),
-            option: self.option.clone(),
-        };
-
         for _ in 0..3 {
-            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
-            join_handles.push(join_handle);
+            let task = TaskAccepter::new(
+                self.sessions.clone(),
+                self.session_sender.clone(),
+                self.session_accepter.clone(),
+                self.option.clone(),
+                self.sleeper.clone(),
+            );
+            task.run().await;
+            self.task_acceptors.lock().await.push(task);
         }
 
-        join_handles
-    }
+        let task = TaskComputer::new(
+            self.my_node_profile.clone(),
+            self.node_profile_repo.clone(),
+            self.node_profile_fetcher.clone(),
+            self.sessions.clone(),
+            self.get_want_asset_keys_fn.executor(),
+            self.get_push_asset_keys_fn.executor(),
+            self.sleeper.clone(),
+        );
+        task.run().await;
+        self.task_computer.lock().await.replace(task);
 
-    async fn create_communicator_task(&self) -> Vec<JoinHandle<()>> {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = TaskCommunicator {
-            my_node_profile: self.my_node_profile.clone(),
-            sessions: self.sessions.clone(),
-            session_receiver: self.session_receiver.clone(),
-            clock: self.clock.clone(),
-            sleeper: self.sleeper.clone(),
-            option: self.option.clone(),
-        };
-
-        for _ in 0..3 {
-            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
-            join_handles.push(join_handle);
-        }
-
-        join_handles
-    }
-
-    async fn create_computer_task(&self) -> Vec<JoinHandle<()>> {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = TaskComputer {
-            my_node_profile: self.my_node_profile.clone(),
-            node_profile_repo: self.node_profile_repo.clone(),
-            node_profile_fetcher: self.node_profile_fetcher.clone(),
-            sessions: self.sessions.clone(),
-            get_want_asset_keys_fn: Arc::new(self.get_want_asset_keys_fn.executor()),
-            get_push_asset_keys_fn: Arc::new(self.get_push_asset_keys_fn.executor()),
-            option: self.option.clone(),
-        };
-
-        for _ in 0..3 {
-            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
-            join_handles.push(join_handle);
-        }
-
-        join_handles
+        let task = TaskCommunicator::new(
+            self.my_node_profile.clone(),
+            self.sessions.clone(),
+            self.session_receiver.clone(),
+            self.clock.clone(),
+            self.sleeper.clone(),
+            self.option.clone(),
+        );
+        task.run().await;
+        self.task_communicator.lock().await.replace(task);
     }
 
     pub async fn terminate(&self) -> anyhow::Result<()> {
-        self.cancellation_token.cancel();
+        {
+            let mut task_connectors = self.task_connectors.lock().await;
+            let task_connectors: Vec<TaskConnector> = task_connectors.drain(..).collect();
+            join_all(task_connectors.iter().map(|task| task.terminate())).await;
+        }
 
-        if let Some(join_handles) = self.join_handles.lock().await.take() {
-            join_handles.await;
+        {
+            let mut task_acceptors = self.task_acceptors.lock().await;
+            let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
+            join_all(task_acceptors.iter().map(|task| task.terminate())).await;
+        }
+
+        {
+            let mut task_computer = self.task_computer.lock().await;
+            if let Some(task_computer) = task_computer.take() {
+                task_computer.terminate().await;
+            }
+        }
+
+        {
+            let mut task_communicator = self.task_communicator.lock().await;
+            if let Some(task_communicator) = task_communicator.take() {
+                task_communicator.terminate().await;
+            }
         }
 
         Ok(())
@@ -204,7 +191,7 @@ mod tests {
     use core_base::{
         clock::{Clock, RealClockUtc},
         random_bytes::RandomBytesProviderImpl,
-        sleeper::{FakeSleeper, Sleeper},
+        sleeper::{RealSleeper, Sleeper},
     };
     use testresult::TestResult;
     use tracing::info;
@@ -274,13 +261,15 @@ mod tests {
             .await?,
         );
 
+        let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
+        let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(RealSleeper);
         let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, name));
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
-        let session_accepter = Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone()).await);
+
+        let session_accepter =
+            Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await);
         let session_connector = Arc::new(SessionConnector::new(tcp_connector, signer, random_bytes_provider));
 
-        let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
-        let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(FakeSleeper);
         let node_ref_repo_dir = dir_path.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
 

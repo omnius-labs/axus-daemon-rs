@@ -38,6 +38,7 @@ impl<T, Args> Default for FnHub<T, Args> {
     }
 }
 
+#[derive(Clone)]
 pub struct FnExecutor<T, Args> {
     tasks: Arc<Mutex<HashMap<u32, FnBox<T, Args>>>>,
 }
@@ -49,6 +50,7 @@ impl<T, Args> FnExecutor<T, Args> {
     }
 }
 
+#[derive(Clone)]
 pub struct FnRegistrar<T, Args> {
     tasks: Arc<Mutex<HashMap<u32, FnBox<T, Args>>>>,
     next_id: Arc<Mutex<u32>>,

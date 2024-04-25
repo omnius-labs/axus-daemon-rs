@@ -10,7 +10,7 @@ pub use connector::*;
 mod tests {
     use std::sync::Arc;
 
-    use core_base::random_bytes::RandomBytesProviderImpl;
+    use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
 
     use crate::{
         model::{OmniAddress, OmniSignType, OmniSigner},
@@ -39,7 +39,9 @@ mod tests {
 
         let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, "test"));
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
-        let session_accepter = SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone()).await;
+        let sleeper = Arc::new(FakeSleeper);
+
+        let session_accepter = SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await;
         let session_connector = SessionConnector::new(tcp_connector, signer, random_bytes_provider);
 
         let client = Arc::new(
