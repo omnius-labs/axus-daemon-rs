@@ -1,4 +1,4 @@
-use crate::model::NodeRef;
+use crate::model::NodeProfile;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64, Engine};
 use crc::{Crc, CRC_32_ISCSI};
@@ -12,11 +12,11 @@ const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 pub struct UriConverter;
 
 impl UriConverter {
-    pub fn encode_node_ref(v: &NodeRef) -> anyhow::Result<String> {
+    pub fn encode_node_profile(v: &NodeProfile) -> anyhow::Result<String> {
         Self::encode("node", v)
     }
 
-    pub fn decode_node_ref(text: &str) -> anyhow::Result<NodeRef> {
+    pub fn decode_node_profile(text: &str) -> anyhow::Result<NodeProfile> {
         Self::decode("node", text)
     }
 
@@ -84,19 +84,19 @@ impl UriConverter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        model::{NodeRef, OmniAddress},
+        model::{NodeProfile, OmniAddress},
         service::util::UriConverter,
     };
 
     #[test]
     pub fn node_profile_test() {
-        let v = NodeRef {
+        let v = NodeProfile {
             id: vec![1, 2, 3],
             addrs: ["a", "b", "c"].into_iter().map(OmniAddress::new).collect(),
         };
-        let s = UriConverter::encode_node_ref(&v).unwrap();
+        let s = UriConverter::encode_node_profile(&v).unwrap();
         println!("{}", s);
-        let v2 = UriConverter::decode_node_ref(s.as_str()).unwrap();
+        let v2 = UriConverter::decode_node_profile(s.as_str()).unwrap();
         assert_eq!(v, v2);
     }
 }

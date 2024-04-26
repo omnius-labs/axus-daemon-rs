@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 use fast_socks5::client::Socks5Stream;
-use tokio::net::TcpStream;
+use tokio::{
+    io::{ReadHalf, WriteHalf},
+    net::TcpStream,
+};
 
-use crate::service::connection::Stream;
+use crate::service::connection::{FramedReader, FramedWriter};
 
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,
@@ -16,7 +19,7 @@ pub enum TcpProxyType {
 
 #[async_trait]
 pub trait ConnectionTcpConnector {
-    async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>>;
+    async fn connect(&self, addr: &str) -> anyhow::Result<(FramedReader<ReadHalf<TcpStream>>, FramedWriter<WriteHalf<TcpStream>>)>;
 }
 
 pub struct ConnectionTcpConnectorImpl {
@@ -43,12 +46,14 @@ impl ConnectionTcpConnectorImpl {
 
 #[async_trait]
 impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
-    async fn connect(&self, addr: &str) -> anyhow::Result<Stream<TcpStream>> {
+    async fn connect(&self, addr: &str) -> anyhow::Result<(FramedReader<ReadHalf<TcpStream>>, FramedWriter<WriteHalf<TcpStream>>)> {
         match self.proxy_option.typ {
             TcpProxyType::None => {
                 let stream = TcpStream::connect(addr).await?;
-                let stream = Stream::new(stream);
-                Ok(stream)
+                let (reader, writer) = tokio::io::split(stream);
+                let reader = FramedReader::new(reader);
+                let writer = FramedWriter::new(writer);
+                Ok((reader, writer))
             }
             TcpProxyType::Socks5 => {
                 if let Some((host, port)) = Self::parse_host_and_port(addr) {
@@ -56,8 +61,10 @@ impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
                         let config = fast_socks5::client::Config::default();
                         let stream = Socks5Stream::connect(proxy_addr.as_str(), host, port, config).await?;
                         let stream = stream.get_socket();
-                        let stream = Stream::new(stream);
-                        return Ok(stream);
+                        let (reader, writer) = tokio::io::split(stream);
+                        let reader = FramedReader::new(reader);
+                        let writer = FramedWriter::new(writer);
+                        return Ok((reader, writer));
                     }
                 }
                 anyhow::bail!("failed to connect by socks5: {:?}", addr);

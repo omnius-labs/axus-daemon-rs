@@ -1,18 +1,17 @@
 use std::{collections::HashMap, sync::Arc};
 
-use core_base::random_bytes::RandomBytesProvider;
-use futures_util::future::{join_all, JoinAll};
+use core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
+use futures::{future::join_all, FutureExt};
 use tokio::{
-    select,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,
 };
-use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
 use crate::{
     model::{OmniAddress, OmniSigner},
     service::{
-        connection::{AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter},
+        connection::{AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter},
         session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
     },
 };
@@ -26,10 +25,10 @@ pub struct SessionAccepter {
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
-    receivers: Arc<Mutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
-    senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
-    cancellation_token: CancellationToken,
-    join_handles: Arc<Mutex<Option<JoinAll<tokio::task::JoinHandle<()>>>>>,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
+    receivers: Arc<TokioMutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
+    senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+    task_acceptors: Arc<TokioMutex<Vec<TaskAccepter>>>,
 }
 
 impl SessionAccepter {
@@ -37,10 +36,10 @@ impl SessionAccepter {
         tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
-        let cancellation_token = CancellationToken::new();
-        let senders = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
-        let receivers = Arc::new(Mutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
+        let senders = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
+        let receivers = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
 
         for typ in [SessionType::NodeFinder].iter() {
             let (tx, rx) = mpsc::channel(20);
@@ -52,46 +51,34 @@ impl SessionAccepter {
             tcp_connector,
             signer,
             random_bytes_provider,
+            sleeper,
             receivers,
             senders,
-            cancellation_token,
-            join_handles: Arc::new(Mutex::new(None)),
+            task_acceptors: Arc::new(TokioMutex::new(Vec::new())),
         };
-        result.create_tasks().await;
+        result.run().await;
 
         result
     }
 
-    async fn create_tasks(&self) {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        join_handles.extend(self.create_accept_task().await);
-
-        *self.join_handles.as_ref().lock().await = Some(join_all(join_handles));
-    }
-
-    async fn create_accept_task(&self) -> Vec<JoinHandle<()>> {
-        let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-        let task = AccepterTask {
-            senders: self.senders.clone(),
-            tcp_connector: self.tcp_connector.clone(),
-            signer: self.signer.clone(),
-            random_bytes_provider: self.random_bytes_provider.clone(),
-        };
-
+    async fn run(&self) {
         for _ in 0..3 {
-            let join_handle = task.clone().run(self.cancellation_token.clone()).await;
-            join_handles.push(join_handle);
+            let task = TaskAccepter::new(
+                self.senders.clone(),
+                self.tcp_connector.clone(),
+                self.signer.clone(),
+                self.random_bytes_provider.clone(),
+                self.sleeper.clone(),
+            );
+            task.run().await;
+            self.task_acceptors.lock().await.push(task);
         }
-
-        join_handles
     }
 
     pub async fn terminate(&self) -> anyhow::Result<()> {
-        self.cancellation_token.cancel();
-
-        if let Some(join_handle) = self.join_handles.lock().await.take() {
-            join_handle.await;
-        }
+        let mut task_acceptors = self.task_acceptors.lock().await;
+        let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
+        join_all(task_acceptors.iter().map(|task| task.terminate())).await;
 
         Ok(())
     }
@@ -105,34 +92,71 @@ impl SessionAccepter {
 }
 
 #[derive(Clone)]
-struct AccepterTask {
-    senders: Arc<Mutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+struct TaskAccepter {
+    inner: TaskAccepterInner,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
+    join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+}
+
+impl TaskAccepter {
+    pub fn new(
+        senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
+        tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
+        signer: Arc<OmniSigner>,
+        random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+    ) -> Self {
+        let inner = TaskAccepterInner {
+            senders,
+            tcp_connector,
+            signer,
+            random_bytes_provider,
+        };
+        Self {
+            inner,
+            sleeper,
+            join_handle: Arc::new(TokioMutex::new(None)),
+        }
+    }
+
+    pub async fn terminate(&self) {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+    }
+
+    pub async fn run(&self) {
+        let sleeper = self.sleeper.clone();
+        let inner = self.inner.clone();
+        let join_handle = tokio::spawn(async move {
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(1)).await;
+                let res = inner.accept().await;
+                if let Err(e) = res {
+                    warn!("{:?}", e);
+                }
+            }
+        });
+        self.join_handle.lock().await.replace(join_handle);
+    }
+}
+
+#[derive(Clone)]
+struct TaskAccepterInner {
+    senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
 }
 
-impl AccepterTask {
-    pub async fn run(self, cancellation_token: CancellationToken) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            select! {
-                _ = cancellation_token.cancelled() => {}
-                _ = async {
-                    loop {
-                        let _ = self.accept().await;
-                    }
-                } => {}
-            }
-        })
-    }
-
+impl TaskAccepterInner {
     async fn accept(&self) -> anyhow::Result<()> {
-        let (stream, addr) = self.tcp_connector.accept().await?;
-        let stream: Arc<Mutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(Mutex::new(stream));
+        let (mut reader, mut writer, addr) = self.tcp_connector.accept().await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.lock().await.recv_message().await?;
+        writer.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = reader.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -143,19 +167,19 @@ impl AccepterTask {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.lock().await.recv_message().await?;
+            writer.send_message(&send_challenge_message).await?;
+            let receive_challenge_message: V1ChallengeMessage = reader.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
             let send_signature_message = V1SignatureMessage { signature: send_signature };
-            stream.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.lock().await.recv_message().await?;
+            writer.send_message(&send_signature_message).await?;
+            let received_signature_message: V1SignatureMessage = reader.recv_message().await?;
 
             if received_signature_message.signature.verify(send_nonce.as_slice()).is_err() {
                 anyhow::bail!("Invalid signature")
             }
 
-            let received_session_request_message: V1RequestMessage = stream.lock().await.recv_message().await?;
+            let received_session_request_message: V1RequestMessage = reader.recv_message().await?;
             let typ = match received_session_request_message.request_type {
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
@@ -163,21 +187,22 @@ impl AccepterTask {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Accept,
                 };
-                stream.lock().await.send_message(&send_session_result_message).await?;
+                writer.send_message(&send_session_result_message).await?;
 
                 let session = Session {
                     typ: typ.clone(),
                     address: OmniAddress::new(format!("tcp({})", addr).as_str()),
                     handshake_type: SessionHandshakeType::Accepted,
                     signature: received_signature_message.signature,
-                    stream,
+                    reader: Arc::new(TokioMutex::new(reader)),
+                    writer: Arc::new(TokioMutex::new(writer)),
                 };
                 permit.send(session);
             } else {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Reject,
                 };
-                stream.lock().await.send_message(&send_session_result_message).await?;
+                writer.send_message(&send_session_result_message).await?;
             }
 
             Ok(())

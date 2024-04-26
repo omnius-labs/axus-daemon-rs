@@ -1,5 +1,5 @@
-mod stream;
+mod framed;
 mod tcp;
 
-pub use stream::*;
+pub use framed::*;
 pub use tcp::*;

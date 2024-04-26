@@ -10,14 +10,14 @@ pub use connector::*;
 mod tests {
     use std::sync::Arc;
 
-    use core_base::random_bytes::RandomBytesProviderImpl;
+    use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
 
     use crate::{
         model::{OmniAddress, OmniSignType, OmniSigner},
         service::{
             connection::{
-                AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
-                TcpProxyOption, TcpProxyType,
+                AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
+                ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
             },
             session::{model::SessionType, SessionAccepter, SessionConnector},
         },
@@ -39,7 +39,9 @@ mod tests {
 
         let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, "test"));
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
-        let session_accepter = SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone()).await;
+        let sleeper = Arc::new(FakeSleeper);
+
+        let session_accepter = SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await;
         let session_connector = SessionConnector::new(tcp_connector, signer, random_bytes_provider);
 
         let client = Arc::new(
@@ -50,8 +52,8 @@ mod tests {
         );
         let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await.unwrap());
 
-        client.stream.lock().await.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = server.stream.lock().await.recv_message().await.unwrap();
+        client.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = server.reader.lock().await.recv_message().await.unwrap();
 
         println!("{}", std::str::from_utf8(&line).unwrap());
 
