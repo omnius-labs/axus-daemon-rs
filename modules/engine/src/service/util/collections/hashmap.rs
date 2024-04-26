@@ -33,6 +33,20 @@ where
         self.map.retain(|_, v| now - v.created_time < expired_time);
     }
 
+    pub fn shrink(&mut self, max_size: usize) {
+        self.refresh();
+
+        if self.map.len() <= max_size {
+            return;
+        }
+
+        let mut entries = self.map.drain().collect::<Vec<_>>();
+        entries.sort_by_key(|(_, v)| v.created_time);
+        entries.truncate(max_size);
+
+        self.map = entries.into_iter().collect();
+    }
+
     pub fn insert(&mut self, key: K, value: V) {
         self.map.insert(
             key,
@@ -41,6 +55,12 @@ where
                 created_time: self.clock.now(),
             },
         );
+    }
+
+    pub fn extend(&mut self, iter: impl IntoIterator<Item = (K, V)>) {
+        let now = self.clock.now();
+        self.map
+            .extend(iter.into_iter().map(|(k, v)| (k, ValueEntry { value: v, created_time: now })));
     }
 
     pub fn contains_key(&self, key: &K) -> bool {

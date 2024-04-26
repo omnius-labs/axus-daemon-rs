@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use core_base::sleeper::Sleeper;
 use futures::FutureExt;
@@ -24,7 +24,7 @@ pub struct TaskAccepter {
 
 impl TaskAccepter {
     pub fn new(
-        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_accepter: Arc<SessionAccepter>,
         option: NodeFinderOptions,
@@ -69,7 +69,7 @@ impl TaskAccepter {
 #[allow(dead_code)]
 #[derive(Clone)]
 struct TaskAccepterInner {
-    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_accepter: Arc<SessionAccepter>,
     option: NodeFinderOptions,
@@ -83,7 +83,7 @@ impl TaskAccepterInner {
             .read()
             .await
             .iter()
-            .filter(|n| n.handshake_type == HandshakeType::Accepted)
+            .filter(|(_, status)| status.handshake_type == HandshakeType::Accepted)
             .count();
         if session_count >= self.option.max_accepted_session_count {
             return Ok(());

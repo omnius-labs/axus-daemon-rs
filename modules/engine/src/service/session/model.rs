@@ -4,7 +4,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::{
     model::{OmniAddress, OmniSignature},
-    service::connection::AsyncSendRecv,
+    service::connection::{AsyncRecv, AsyncSend},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -24,5 +24,6 @@ pub struct Session {
     pub address: OmniAddress,
     pub handshake_type: SessionHandshakeType,
     pub signature: OmniSignature,
-    pub stream: Arc<TokioMutex<dyn AsyncSendRecv + Send + Sync + Unpin>>,
+    pub reader: Arc<TokioMutex<dyn AsyncRecv + Send + Sync + Unpin>>,
+    pub writer: Arc<TokioMutex<dyn AsyncSend + Send + Sync + Unpin>>,
 }

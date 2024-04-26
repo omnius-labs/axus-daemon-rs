@@ -16,8 +16,8 @@ mod tests {
         model::{OmniAddress, OmniSignType, OmniSigner},
         service::{
             connection::{
-                AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
-                TcpProxyOption, TcpProxyType,
+                AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
+                ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
             },
             session::{model::SessionType, SessionAccepter, SessionConnector},
         },
@@ -52,8 +52,8 @@ mod tests {
         );
         let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await.unwrap());
 
-        client.stream.lock().await.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = server.stream.lock().await.recv_message().await.unwrap();
+        client.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = server.reader.lock().await.recv_message().await.unwrap();
 
         println!("{}", std::str::from_utf8(&line).unwrap());
 

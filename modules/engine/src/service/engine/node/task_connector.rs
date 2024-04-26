@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex as StdMutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use core_base::sleeper::Sleeper;
 use futures::FutureExt;
@@ -32,7 +35,7 @@ pub struct TaskConnector {
 
 impl TaskConnector {
     pub fn new(
-        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_connector: Arc<SessionConnector>,
         connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
@@ -80,7 +83,7 @@ impl TaskConnector {
 
 #[derive(Clone)]
 struct TaskConnectorInner {
-    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_connector: Arc<SessionConnector>,
     connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
@@ -95,7 +98,7 @@ impl TaskConnectorInner {
             .read()
             .await
             .iter()
-            .filter(|n| n.handshake_type == HandshakeType::Connected)
+            .filter(|(_, status)| status.handshake_type == HandshakeType::Connected)
             .count();
         if session_count >= self.option.max_connected_session_count {
             return Ok(());
@@ -107,7 +110,13 @@ impl TaskConnectorInner {
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
         let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
 
-        if self.sessions.read().await.iter().any(|n| n.node_profile.id == node_profile.id) {
+        if self
+            .sessions
+            .read()
+            .await
+            .iter()
+            .any(|(_, status)| status.node_profile.id == node_profile.id)
+        {
             anyhow::bail!("Already connected 1");
         }
 

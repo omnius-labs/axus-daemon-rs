@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use chrono::{Duration, Utc};
 use core_base::clock::Clock;
@@ -17,8 +20,8 @@ pub struct SessionStatus {
     pub session: Session,
     pub node_profile: NodeProfile,
 
-    pub sending_data_message: Arc<SendingDataMessage>,
-    pub received_data_message: Arc<ReceivedDataMessage>,
+    pub sending_data_message: Arc<StdMutex<SendingDataMessage>>,
+    pub received_data_message: Arc<StdMutex<ReceivedDataMessage>>,
 }
 
 #[allow(dead_code)]
@@ -54,19 +57,17 @@ impl Default for SendingDataMessage {
 }
 
 pub struct ReceivedDataMessage {
-    pub push_node_profiles: VolatileHashSet<NodeProfile>,
-    pub want_asset_keys: VolatileHashSet<AssetKey>,
-    pub give_asset_key_locations: VolatileHashMap<AssetKey, Vec<NodeProfile>>,
-    pub push_asset_key_locations: VolatileHashMap<AssetKey, Vec<NodeProfile>>,
+    pub want_asset_keys: VolatileHashSet<Arc<AssetKey>>,
+    pub give_asset_key_locations: VolatileHashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
+    pub push_asset_key_locations: VolatileHashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
 }
 
 impl ReceivedDataMessage {
     pub fn new(clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
         Self {
-            push_node_profiles: VolatileHashSet::new(Duration::seconds(60), clock.clone()),
-            want_asset_keys: VolatileHashSet::new(Duration::seconds(60), clock.clone()),
-            give_asset_key_locations: VolatileHashMap::new(Duration::seconds(60), clock.clone()),
-            push_asset_key_locations: VolatileHashMap::new(Duration::seconds(60), clock),
+            want_asset_keys: VolatileHashSet::new(Duration::minutes(30), clock.clone()),
+            give_asset_key_locations: VolatileHashMap::new(Duration::minutes(30), clock.clone()),
+            push_asset_key_locations: VolatileHashMap::new(Duration::minutes(30), clock),
         }
     }
 }

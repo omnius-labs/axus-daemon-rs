@@ -11,7 +11,7 @@ use tracing::warn;
 use crate::{
     model::{OmniAddress, OmniSigner},
     service::{
-        connection::{AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter},
+        connection::{AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter},
         session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
     },
 };
@@ -152,12 +152,11 @@ struct TaskAccepterInner {
 
 impl TaskAccepterInner {
     async fn accept(&self) -> anyhow::Result<()> {
-        let (stream, addr) = self.tcp_connector.accept().await?;
-        let stream: Arc<TokioMutex<dyn AsyncSendRecv + Send + Sync + Unpin>> = Arc::new(TokioMutex::new(stream));
+        let (mut reader, mut writer, addr) = self.tcp_connector.accept().await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.lock().await.recv_message().await?;
+        writer.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = reader.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -168,19 +167,19 @@ impl TaskAccepterInner {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.lock().await.recv_message().await?;
+            writer.send_message(&send_challenge_message).await?;
+            let receive_challenge_message: V1ChallengeMessage = reader.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
             let send_signature_message = V1SignatureMessage { signature: send_signature };
-            stream.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.lock().await.recv_message().await?;
+            writer.send_message(&send_signature_message).await?;
+            let received_signature_message: V1SignatureMessage = reader.recv_message().await?;
 
             if received_signature_message.signature.verify(send_nonce.as_slice()).is_err() {
                 anyhow::bail!("Invalid signature")
             }
 
-            let received_session_request_message: V1RequestMessage = stream.lock().await.recv_message().await?;
+            let received_session_request_message: V1RequestMessage = reader.recv_message().await?;
             let typ = match received_session_request_message.request_type {
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
@@ -188,21 +187,22 @@ impl TaskAccepterInner {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Accept,
                 };
-                stream.lock().await.send_message(&send_session_result_message).await?;
+                writer.send_message(&send_session_result_message).await?;
 
                 let session = Session {
                     typ: typ.clone(),
                     address: OmniAddress::new(format!("tcp({})", addr).as_str()),
                     handshake_type: SessionHandshakeType::Accepted,
                     signature: received_signature_message.signature,
-                    stream,
+                    reader: Arc::new(TokioMutex::new(reader)),
+                    writer: Arc::new(TokioMutex::new(writer)),
                 };
                 permit.send(session);
             } else {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Reject,
                 };
-                stream.lock().await.send_message(&send_session_result_message).await?;
+                writer.send_message(&send_session_result_message).await?;
             }
 
             Ok(())

@@ -70,7 +70,7 @@ ORDER BY weight DESC, updated_time DESC
         Ok(res)
     }
 
-    pub async fn insert_bulk_node_profile(&self, vs: &[NodeProfile], weight: i64) -> anyhow::Result<()> {
+    pub async fn insert_bulk_node_profile(&self, vs: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
         let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
             r#"
 INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
@@ -116,7 +116,8 @@ mod tests {
             id: vec![0],
             addrs: vec![OmniAddress::new("test")],
         }];
-        repo.insert_bulk_node_profile(&vs, 1).await?;
+        let vs_ref: Vec<&NodeProfile> = vs.iter().collect();
+        repo.insert_bulk_node_profile(&vs_ref, 1).await?;
 
         let res = repo.get_node_profiles().await?;
         assert_eq!(res, vs);

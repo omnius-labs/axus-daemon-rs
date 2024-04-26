@@ -28,8 +28,27 @@ where
         self.map.retain(|_, v| now - *v < expired_time);
     }
 
+    pub fn shrink(&mut self, max_size: usize) {
+        self.refresh();
+
+        if self.map.len() <= max_size {
+            return;
+        }
+
+        let mut entries = self.map.drain().collect::<Vec<_>>();
+        entries.sort_by_key(|(_, v)| *v);
+        entries.truncate(max_size);
+
+        self.map = entries.into_iter().collect();
+    }
+
     pub fn insert(&mut self, value: T) {
         self.map.insert(value, self.clock.now());
+    }
+
+    pub fn extend(&mut self, values: impl IntoIterator<Item = T>) {
+        let now = self.clock.now();
+        self.map.extend(values.into_iter().map(|v| (v, now)));
     }
 
     pub fn contains(&self, value: &T) -> bool {

@@ -9,7 +9,7 @@ pub use upnp_client::*;
 #[cfg(test)]
 mod tests {
     use crate::service::connection::{
-        AsyncSendRecv, AsyncSendRecvExt, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
+        AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
         TcpProxyOption, TcpProxyType,
     };
 
@@ -24,11 +24,11 @@ mod tests {
         .await
         .unwrap();
 
-        let mut client: Box<dyn AsyncSendRecv + Send + Sync + Unpin> = Box::new(connector.connect("127.0.0.1:50000").await.unwrap());
-        let mut server: Box<dyn AsyncSendRecv + Send + Sync + Unpin> = Box::new(accepter.accept().await.unwrap().0);
+        let (_, mut writer) = connector.connect("127.0.0.1:50000").await.unwrap();
+        let (mut reader, _, _) = accepter.accept().await.unwrap();
 
-        client.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = server.recv_message().await.unwrap();
+        writer.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = reader.recv_message().await.unwrap();
 
         println!("{}", std::str::from_utf8(&line).unwrap());
     }

@@ -4,16 +4,19 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{ReadHalf, WriteHalf},
+    net::{TcpListener, TcpStream},
+};
 
-use crate::service::connection::Stream;
+use crate::service::connection::{FramedReader, FramedWriter};
 
 use super::UpnpClient;
 
 #[async_trait]
 pub trait ConnectionTcpAccepter {
     async fn terminate(&self) -> anyhow::Result<()>;
-    async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)>;
+    async fn accept(&self) -> anyhow::Result<(FramedReader<ReadHalf<TcpStream>>, FramedWriter<WriteHalf<TcpStream>>, SocketAddr)>;
     async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>>;
 }
 
@@ -61,10 +64,12 @@ impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
         Ok(())
     }
 
-    async fn accept(&self) -> anyhow::Result<(Stream<TcpStream>, SocketAddr)> {
+    async fn accept(&self) -> anyhow::Result<(FramedReader<ReadHalf<TcpStream>>, FramedWriter<WriteHalf<TcpStream>>, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
-        let stream = Stream::new(stream);
-        Ok((stream, addr))
+        let (reader, writer) = tokio::io::split(stream);
+        let reader = FramedReader::new(reader);
+        let writer = FramedWriter::new(writer);
+        Ok((reader, writer, addr))
     }
 
     async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {

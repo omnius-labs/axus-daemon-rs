@@ -20,6 +20,7 @@
     "sqlx",
     "tempdir",
     "tempfile",
+    "testresult",
     "Upnp"
   ]
 }

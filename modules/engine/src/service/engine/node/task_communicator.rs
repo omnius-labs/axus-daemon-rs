@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex as StdMutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
@@ -14,13 +17,14 @@ use tracing::{info, warn};
 use crate::{
     model::NodeProfile,
     service::{
+        connection::{AsyncRecvExt as _, AsyncSendExt},
         engine::node::{ReceivedDataMessage, SendingDataMessage},
         session::model::Session,
         util::WaitGroup,
     },
 };
 
-use super::{Communicator, HandshakeType, NodeFinderOptions, SessionStatus};
+use super::{Communicator, DataMessage, HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
@@ -34,7 +38,8 @@ pub struct TaskCommunicator {
 impl TaskCommunicator {
     pub fn new(
         my_node_profile: Arc<StdMutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        node_profile_repo: Arc<NodeProfileRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -45,6 +50,7 @@ impl TaskCommunicator {
         let inner = TaskCommunicatorInner {
             my_node_profile,
             sessions,
+            node_profile_repo,
             clock,
             option,
             sleeper,
@@ -90,7 +96,8 @@ impl TaskCommunicator {
 #[derive(Clone)]
 struct TaskCommunicatorInner {
     my_node_profile: Arc<StdMutex<NodeProfile>>,
-    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    node_profile_repo: Arc<NodeProfileRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOptions,
@@ -103,7 +110,8 @@ struct TaskCommunicatorInner {
 impl TaskCommunicatorInner {
     pub fn new(
         my_node_profile: Arc<StdMutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        node_profile_repo: Arc<NodeProfileRepo>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOptions,
@@ -111,6 +119,7 @@ impl TaskCommunicatorInner {
         Self {
             my_node_profile,
             sessions,
+            node_profile_repo,
             clock,
             sleeper,
             option,
@@ -146,16 +155,16 @@ impl TaskCommunicatorInner {
             handshake_type,
             session,
             node_profile: node_profile.clone(),
-            sending_data_message: Arc::new(SendingDataMessage::default()),
-            received_data_message: Arc::new(ReceivedDataMessage::new(self.clock.clone())),
+            sending_data_message: Arc::new(StdMutex::new(SendingDataMessage::default())),
+            received_data_message: Arc::new(StdMutex::new(ReceivedDataMessage::new(self.clock.clone()))),
         };
 
         {
             let mut sessions = self.sessions.write().await;
-            if sessions.iter().any(|n| n.node_profile.id == node_profile.id) {
+            if sessions.contains_key(&node_profile.id) {
                 return Err(anyhow::anyhow!("Session already exists"));
             }
-            sessions.push(status.clone());
+            sessions.insert(node_profile.id, status.clone());
         }
 
         info!("Session established: {}", status.node_profile);
@@ -185,22 +194,34 @@ impl TaskCommunicatorInner {
         })
     }
 
-    async fn send_sub(_status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
+    async fn send_sub(status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
         loop {
-            sleeper.sleep(std::time::Duration::from_secs(1)).await;
+            sleeper.sleep(std::time::Duration::from_secs(30)).await;
+
+            let data_message = {
+                let mut sending_data_message = status.sending_data_message.lock().unwrap();
+                DataMessage {
+                    push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
+                    want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
+                    give_asset_key_locations: sending_data_message.give_asset_key_locations.drain().collect(),
+                    push_asset_key_locations: sending_data_message.push_asset_key_locations.drain().collect(),
+                }
+            };
+
+            status.session.writer.lock().await.send_message(&data_message).await?;
         }
     }
 
     fn receive(&self, status: &SessionStatus) -> JoinHandle<()> {
         let status = status.clone();
-        let clock = self.clock.clone();
+        let node_profile_repo = self.node_profile_repo.clone();
         let sleeper = self.sleeper.clone();
         let cancellation_token = self.cancellation_token.clone();
         tokio::spawn(async move {
             select! {
                 _ = cancellation_token.cancelled() => {}
                 _ = async {
-                    let res = Self::receive_sub(status, sleeper).await;
+                    let res = Self::receive_sub(status, node_profile_repo, sleeper).await;
                     if let Err(e) = res {
                         warn!("{:?}", e);
                     }
@@ -211,12 +232,39 @@ impl TaskCommunicatorInner {
 
     async fn receive_sub(
         status: SessionStatus,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        node_profile_repo: Arc<NodeProfileRepo>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> anyhow::Result<()> {
         loop {
-            sleeper.sleep(std::time::Duration::from_secs(1)).await;
-            status.received_data_message = Arc::new(ReceivedDataMessage::new(clock.clone()));
+            sleeper.sleep(std::time::Duration::from_secs(20)).await;
+
+            let data_message = status.session.reader.lock().await.recv_message::<DataMessage>().await?;
+
+            let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
+            node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+
+            {
+                let mut received_data_message = status.received_data_message.lock().unwrap();
+                received_data_message
+                    .want_asset_keys
+                    .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
+                received_data_message.give_asset_key_locations.extend(
+                    data_message
+                        .give_asset_key_locations
+                        .into_iter()
+                        .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
+                );
+                received_data_message.push_asset_key_locations.extend(
+                    data_message
+                        .push_asset_key_locations
+                        .into_iter()
+                        .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
+                );
+
+                received_data_message.want_asset_keys.shrink(1024 * 256);
+                received_data_message.give_asset_key_locations.shrink(1024 * 256);
+                received_data_message.push_asset_key_locations.shrink(1024 * 256);
+            }
         }
     }
 }

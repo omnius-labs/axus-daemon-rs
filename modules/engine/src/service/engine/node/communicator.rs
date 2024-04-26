@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::{
     model::{AssetKey, NodeProfile},
-    service::{connection::AsyncSendRecvExt, session::model::Session},
+    service::{
+        connection::{AsyncRecvExt as _, AsyncSendExt as _},
+        session::model::Session,
+    },
 };
 
 #[allow(dead_code)]
@@ -13,8 +16,8 @@ impl Communicator {
         let send_hello_message = HelloMessage {
             version: NodeFinderVersion::V1,
         };
-        session.stream.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = session.stream.lock().await.recv_message().await?;
+        session.writer.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = session.reader.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -22,8 +25,8 @@ impl Communicator {
             let send_profile_message = ProfileMessage {
                 node_profile: node_profile.clone(),
             };
-            session.stream.lock().await.send_message(&send_profile_message).await?;
-            let received_profile_message: ProfileMessage = session.stream.lock().await.recv_message().await?;
+            session.writer.lock().await.send_message(&send_profile_message).await?;
+            let received_profile_message: ProfileMessage = session.reader.lock().await.recv_message().await?;
 
             Ok(received_profile_message.node_profile)
         } else {
@@ -33,13 +36,13 @@ impl Communicator {
 
     #[allow(unused)]
     pub async fn send_data_message(session: &Session, data_message: &DataMessage) -> anyhow::Result<()> {
-        session.stream.lock().await.send_message(data_message).await?;
+        session.writer.lock().await.send_message(data_message).await?;
         Ok(())
     }
 
     #[allow(unused)]
     pub async fn receive_data_message(session: &Session) -> anyhow::Result<DataMessage> {
-        let data_message: DataMessage = session.stream.lock().await.recv_message().await?;
+        let data_message: DataMessage = session.reader.lock().await.recv_message().await?;
         Ok(data_message)
     }
 }

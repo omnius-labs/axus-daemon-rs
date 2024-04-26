@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex as StdMutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use chrono::{Duration, Utc};
 use core_base::{clock::Clock, sleeper::Sleeper};
@@ -30,7 +33,7 @@ pub struct NodeFinder {
 
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
-    sessions: Arc<TokioRwLock<Vec<SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
@@ -75,7 +78,7 @@ impl NodeFinder {
 
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
-            sessions: Arc::new(TokioRwLock::new(Vec::new())),
+            sessions: Arc::new(TokioRwLock::new(HashMap::new())),
             connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
@@ -143,6 +146,7 @@ impl NodeFinder {
         let task = TaskCommunicator::new(
             self.my_node_profile.clone(),
             self.sessions.clone(),
+            self.node_profile_repo.clone(),
             self.session_receiver.clone(),
             self.clock.clone(),
             self.sleeper.clone(),
