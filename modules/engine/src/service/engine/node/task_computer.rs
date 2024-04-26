@@ -21,7 +21,7 @@ use super::{NodeProfileFetcher, NodeProfileRepo, SendingDataMessage, SessionStat
 
 #[derive(Clone)]
 pub struct TaskComputer {
-    inner: TaskComputerInner,
+    inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
@@ -36,7 +36,7 @@ impl TaskComputer {
         get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
-        let inner = TaskComputerInner {
+        let inner = Inner {
             my_node_profile,
             node_profile_repo,
             node_profile_fetcher,
@@ -78,7 +78,7 @@ impl TaskComputer {
 }
 
 #[derive(Clone)]
-struct TaskComputerInner {
+struct Inner {
     my_node_profile: Arc<StdMutex<NodeProfile>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
@@ -87,7 +87,7 @@ struct TaskComputerInner {
     get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
 }
 
-impl TaskComputerInner {
+impl Inner {
     pub async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
         let node_profiles = self.node_profile_fetcher.fetch().await?;
         let node_profiles: Vec<&NodeProfile> = node_profiles.iter().collect();

@@ -93,7 +93,7 @@ impl SessionAccepter {
 
 #[derive(Clone)]
 struct TaskAccepter {
-    inner: TaskAccepterInner,
+    inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
@@ -106,7 +106,7 @@ impl TaskAccepter {
         random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
-        let inner = TaskAccepterInner {
+        let inner = Inner {
             senders,
             tcp_connector,
             signer,
@@ -143,14 +143,14 @@ impl TaskAccepter {
 }
 
 #[derive(Clone)]
-struct TaskAccepterInner {
+struct Inner {
     senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
 }
 
-impl TaskAccepterInner {
+impl Inner {
     async fn accept(&self) -> anyhow::Result<()> {
         let (mut reader, mut writer, addr) = self.tcp_connector.accept().await?;
 

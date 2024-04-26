@@ -24,12 +24,12 @@ use crate::{
     },
 };
 
-use super::{Communicator, DataMessage, HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
+use super::{Communicator, DataMessage, HandshakeType, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
-    inner: TaskCommunicatorInner,
+    inner: Inner,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
     wait_group: Arc<WaitGroup>,
     cancellation_token: CancellationToken,
@@ -43,16 +43,14 @@ impl TaskCommunicator {
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
-        option: NodeFinderOptions,
     ) -> Self {
         let wait_group = Arc::new(WaitGroup::new());
         let cancellation_token = CancellationToken::new();
-        let inner = TaskCommunicatorInner {
+        let inner = Inner {
             my_node_profile,
             sessions,
             node_profile_repo,
             clock,
-            option,
             sleeper,
             wait_group: wait_group.clone(),
             cancellation_token: cancellation_token.clone(),
@@ -92,43 +90,19 @@ impl TaskCommunicator {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone)]
-struct TaskCommunicatorInner {
+struct Inner {
     my_node_profile: Arc<StdMutex<NodeProfile>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
-    option: NodeFinderOptions,
 
     wait_group: Arc<WaitGroup>,
     cancellation_token: CancellationToken,
 }
 
-#[allow(dead_code)]
-impl TaskCommunicatorInner {
-    pub fn new(
-        my_node_profile: Arc<StdMutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
-        node_profile_repo: Arc<NodeProfileRepo>,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-        option: NodeFinderOptions,
-    ) -> Self {
-        Self {
-            my_node_profile,
-            sessions,
-            node_profile_repo,
-            clock,
-            sleeper,
-            option,
-
-            wait_group: Arc::new(WaitGroup::new()),
-            cancellation_token: CancellationToken::new(),
-        }
-    }
-
+impl Inner {
     pub fn communicate(self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
         self.wait_group.add(1);
         tokio::spawn(async move {

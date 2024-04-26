@@ -28,7 +28,7 @@ use super::{HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskConnector {
-    inner: TaskConnectorInner,
+    inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
@@ -43,7 +43,7 @@ impl TaskConnector {
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOptions,
     ) -> Self {
-        let inner = TaskConnectorInner {
+        let inner = Inner {
             sessions,
             session_sender,
             session_connector,
@@ -82,7 +82,7 @@ impl TaskConnector {
 }
 
 #[derive(Clone)]
-struct TaskConnectorInner {
+struct Inner {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_connector: Arc<SessionConnector>,
@@ -91,7 +91,7 @@ struct TaskConnectorInner {
     option: NodeFinderOptions,
 }
 
-impl TaskConnectorInner {
+impl Inner {
     async fn connect(&self) -> anyhow::Result<()> {
         let session_count = self
             .sessions

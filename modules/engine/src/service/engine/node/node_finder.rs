@@ -150,7 +150,6 @@ impl NodeFinder {
             self.session_receiver.clone(),
             self.clock.clone(),
             self.sleeper.clone(),
-            self.option.clone(),
         );
         task.run().await;
         self.task_communicator.lock().await.replace(task);

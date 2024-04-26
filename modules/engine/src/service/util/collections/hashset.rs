@@ -35,8 +35,8 @@ where
             return;
         }
 
-        let mut entries = self.map.drain().collect::<Vec<_>>();
-        entries.sort_by_key(|(_, v)| *v);
+        let mut entries: Vec<(T, DateTime<Utc>)> = self.map.drain().collect();
+        entries.sort_by_key(|(_, v)| std::cmp::Reverse(*v));
         entries.truncate(max_size);
 
         self.map = entries.into_iter().collect();

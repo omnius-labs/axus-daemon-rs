@@ -17,7 +17,7 @@ use super::{HandshakeType, NodeFinderOptions, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskAccepter {
-    inner: TaskAccepterInner,
+    inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
@@ -30,7 +30,7 @@ impl TaskAccepter {
         option: NodeFinderOptions,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
-        let inner = TaskAccepterInner {
+        let inner = Inner {
             sessions,
             session_sender,
             session_accepter,
@@ -68,7 +68,7 @@ impl TaskAccepter {
 
 #[allow(dead_code)]
 #[derive(Clone)]
-struct TaskAccepterInner {
+struct Inner {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_accepter: Arc<SessionAccepter>,
@@ -76,7 +76,7 @@ struct TaskAccepterInner {
 }
 
 #[allow(dead_code)]
-impl TaskAccepterInner {
+impl Inner {
     async fn accept(&self) -> anyhow::Result<()> {
         let session_count = self
             .sessions
