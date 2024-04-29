@@ -41,6 +41,7 @@ where
     pub fn new(stream: T) -> Self {
         let codec = tokio_util::codec::LengthDelimitedCodec::builder()
             .max_frame_length(1024 * 1024 * 64)
+            .little_endian()
             .new_codec();
         let framed = tokio_util::codec::FramedRead::new(stream, codec);
         Self { framed }
@@ -61,6 +62,7 @@ where
     pub fn new(stream: T) -> Self {
         let codec = tokio_util::codec::LengthDelimitedCodec::builder()
             .max_frame_length(1024 * 1024 * 64)
+            .little_endian()
             .new_codec();
         let framed = tokio_util::codec::FramedWrite::new(stream, codec);
         Self { framed }
