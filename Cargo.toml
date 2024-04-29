@@ -3,7 +3,7 @@ members = [
     "./refs/core-rs/modules/base",
     "./refs/core-rs/modules/testkit",
 
-    "./modules/api",
+    "./entrypoints/api",
     "./modules/engine",
 ]
 exclude = ["refs/core-rs"]
