@@ -216,6 +216,7 @@ impl Inner {
 
             let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
             node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+            node_profile_repo.shrink(1024).await?;
 
             {
                 let mut received_data_message = status.received_data_message.lock().unwrap();

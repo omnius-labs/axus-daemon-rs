@@ -90,6 +90,36 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
 
         Ok(())
     }
+
+    pub async fn shrink(&self, limit: usize) -> anyhow::Result<()> {
+        let total: i64 = sqlx::query_scalar(
+            r#"
+SELECT COUNT(*) FROM node_profiles
+"#,
+        )
+        .fetch_one(self.db.as_ref())
+        .await?;
+
+        let count_to_delete = total - limit as i64;
+
+        if count_to_delete > 0 {
+            sqlx::query(
+                r#"
+DELETE FROM node_profiles
+WHERE rowid IN (
+    SELECT rowid FROM node_profiles
+    ORDER BY updated_time ASC, rowid ASC
+    LIMIT ?
+)
+"#,
+            )
+            .bind(count_to_delete)
+            .execute(self.db.as_ref())
+            .await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -112,15 +142,29 @@ mod tests {
         let clock = Arc::new(FakeClockUtc::new(DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into()));
         let repo = NodeProfileRepo::new(path, clock).await?;
 
-        let vs: Vec<NodeProfile> = vec![NodeProfile {
-            id: vec![0],
-            addrs: vec![OmniAddress::new("test")],
-        }];
+        let vs: Vec<NodeProfile> = vec![
+            NodeProfile {
+                id: vec![0],
+                addrs: vec![OmniAddress::new("test")],
+            },
+            NodeProfile {
+                id: vec![1],
+                addrs: vec![OmniAddress::new("test")],
+            },
+        ];
         let vs_ref: Vec<&NodeProfile> = vs.iter().collect();
         repo.insert_bulk_node_profile(&vs_ref, 1).await?;
 
         let res = repo.get_node_profiles().await?;
         assert_eq!(res, vs);
+
+        repo.shrink(1).await?;
+        let res = repo.get_node_profiles().await?;
+        assert_eq!(res, vs.into_iter().skip(1).collect::<Vec<_>>());
+
+        repo.shrink(0).await?;
+        let res = repo.get_node_profiles().await?;
+        assert_eq!(res, vec![]);
 
         Ok(())
     }
