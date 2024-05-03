@@ -3,9 +3,11 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 
+use bitflags::bitflags;
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::FutureExt;
+use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -15,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::{
-    model::NodeProfile,
+    model::{AssetKey, NodeProfile},
     service::{
         connection::{AsyncRecvExt as _, AsyncSendExt},
         engine::node::{ReceivedDataMessage, SendingDataMessage},
@@ -24,7 +26,7 @@ use crate::{
     },
 };
 
-use super::{Communicator, DataMessage, HandshakeType, NodeProfileRepo, SessionStatus};
+use super::{HandshakeType, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
@@ -123,7 +125,7 @@ impl Inner {
     async fn communicate_sub(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
         let my_node_profile = self.my_node_profile.lock().unwrap().clone();
 
-        let node_profile = Communicator::handshake(&session, &my_node_profile).await?;
+        let node_profile = Self::handshake(&session, &my_node_profile).await?;
 
         let status = SessionStatus {
             handshake_type,
@@ -149,6 +151,28 @@ impl Inner {
         let _ = tokio::join!(send, receive);
 
         Ok(())
+    }
+
+    pub async fn handshake(session: &Session, node_profile: &NodeProfile) -> anyhow::Result<NodeProfile> {
+        let send_hello_message = HelloMessage {
+            version: NodeFinderVersion::V1,
+        };
+        session.writer.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = session.reader.lock().await.recv_message().await?;
+
+        let version = send_hello_message.version | received_hello_message.version;
+
+        if version.contains(NodeFinderVersion::V1) {
+            let send_profile_message = ProfileMessage {
+                node_profile: node_profile.clone(),
+            };
+            session.writer.lock().await.send_message(&send_profile_message).await?;
+            let received_profile_message: ProfileMessage = session.reader.lock().await.recv_message().await?;
+
+            Ok(received_profile_message.node_profile)
+        } else {
+            anyhow::bail!("Invalid version")
+        }
     }
 
     fn send(&self, status: &SessionStatus) -> JoinHandle<()> {
@@ -241,5 +265,47 @@ impl Inner {
                 received_data_message.push_asset_key_locations.shrink(1024 * 256);
             }
         }
+    }
+}
+
+bitflags! {
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+      struct NodeFinderVersion: u32 {
+        const V1 = 1;
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct HelloMessage {
+    pub version: NodeFinderVersion,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct ProfileMessage {
+    pub node_profile: NodeProfile,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct DataMessage {
+    pub push_node_profiles: Vec<NodeProfile>,
+    pub want_asset_keys: Vec<AssetKey>,
+    pub give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+    pub push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+}
+
+impl DataMessage {
+    pub fn new() -> Self {
+        Self {
+            push_node_profiles: vec![],
+            want_asset_keys: vec![],
+            give_asset_key_locations: HashMap::new(),
+            push_asset_key_locations: HashMap::new(),
+        }
+    }
+}
+
+impl Default for DataMessage {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -1,4 +1,3 @@
-mod communicator;
 mod node_finder;
 mod node_profile_fetcher;
 mod node_profile_repo;
@@ -8,7 +7,6 @@ mod task_communicator;
 mod task_computer;
 mod task_connector;
 
-use communicator::*;
 pub use node_finder::*;
 pub use node_profile_fetcher::*;
 use node_profile_repo::*;
