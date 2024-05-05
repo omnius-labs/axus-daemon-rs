@@ -18,9 +18,3 @@ dependencies = ["fmt-check", "clippy"]
 command = "cargo"
 args = ["test", "--all-features"]
 dependencies = ["lint"]
-
-[tasks.watch]
-workspace = false
-command = "cargo"
-install_crate = "cargo-watch"
-args = ["watch", "-x", "run --bin opxs-api"]
