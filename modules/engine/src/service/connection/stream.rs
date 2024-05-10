@@ -1,12 +1,35 @@
+use std::sync::Arc;
+
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures_util::SinkExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::Mutex as TokioMutex,
+};
 use tokio_stream::StreamExt;
 use tokio_util::bytes::Bytes;
 
 use crate::service::util::Cbor;
+
+#[derive(Clone)]
+pub struct FramedStream {
+    pub reader: Arc<TokioMutex<dyn AsyncRecv + Send + Sync + Unpin>>,
+    pub writer: Arc<TokioMutex<dyn AsyncSend + Send + Sync + Unpin>>,
+}
+
+impl FramedStream {
+    pub fn new<R, W>(reader: R, writer: W) -> Self
+    where
+        R: AsyncRead + Send + Sync + Unpin + 'static,
+        W: AsyncWrite + Send + Sync + Unpin + 'static,
+    {
+        let reader = Arc::new(TokioMutex::new(FramedReader::new(reader)));
+        let writer = Arc::new(TokioMutex::new(FramedWriter::new(writer)));
+        Self { reader, writer }
+    }
+}
 
 #[async_trait]
 pub trait AsyncSend {
@@ -27,7 +50,7 @@ pub trait AsyncRecvExt: AsyncRecv {
     async fn recv_message<T: for<'a> Deserialize<'a>>(&mut self) -> anyhow::Result<T>;
 }
 
-pub struct FramedReader<T>
+struct FramedReader<T>
 where
     T: AsyncRead + Send + Sync + Unpin,
 {
@@ -48,7 +71,7 @@ where
     }
 }
 
-pub struct FramedWriter<T>
+struct FramedWriter<T>
 where
     T: AsyncWrite + Send + Sync + Unpin,
 {

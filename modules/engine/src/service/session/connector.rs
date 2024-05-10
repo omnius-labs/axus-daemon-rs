@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use core_base::random_bytes::RandomBytesProvider;
-use tokio::sync::Mutex as TokioMutex;
 
 use crate::{
     model::{OmniAddress, OmniSigner},
@@ -36,11 +35,11 @@ impl SessionConnector {
     }
 
     pub async fn connect(&self, address: &OmniAddress, typ: &SessionType) -> anyhow::Result<Session> {
-        let (mut reader, mut writer) = self.tcp_connector.connect(address.parse_tcp()?.as_str()).await?;
+        let stream = self.tcp_connector.connect(address.parse_tcp()?.as_str()).await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        writer.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = reader.recv_message().await?;
+        stream.writer.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = stream.reader.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -51,13 +50,13 @@ impl SessionConnector {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            writer.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = reader.recv_message().await?;
+            stream.writer.lock().await.send_message(&send_challenge_message).await?;
+            let receive_challenge_message: V1ChallengeMessage = stream.reader.lock().await.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
             let send_signature_message = V1SignatureMessage { signature: send_signature };
-            writer.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = reader.recv_message().await?;
+            stream.writer.lock().await.send_message(&send_signature_message).await?;
+            let received_signature_message: V1SignatureMessage = stream.reader.lock().await.recv_message().await?;
 
             if received_signature_message.signature.verify(send_nonce.as_slice()).is_err() {
                 anyhow::bail!("Invalid signature")
@@ -68,8 +67,8 @@ impl SessionConnector {
                     SessionType::NodeFinder => V1RequestType::NodeExchanger,
                 },
             };
-            writer.send_message(&send_session_request_message).await?;
-            let received_session_result_message: V1ResultMessage = reader.recv_message().await?;
+            stream.writer.lock().await.send_message(&send_session_request_message).await?;
+            let received_session_result_message: V1ResultMessage = stream.reader.lock().await.recv_message().await?;
 
             if received_session_result_message.result_type == V1ResultType::Reject {
                 anyhow::bail!("Session rejected")
@@ -80,8 +79,7 @@ impl SessionConnector {
                 address: address.clone(),
                 handshake_type: SessionHandshakeType::Connected,
                 signature: received_signature_message.signature,
-                reader: Arc::new(TokioMutex::new(reader)),
-                writer: Arc::new(TokioMutex::new(writer)),
+                stream,
             };
 
             Ok(session)

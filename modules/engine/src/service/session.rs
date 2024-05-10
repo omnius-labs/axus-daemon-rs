@@ -52,8 +52,8 @@ mod tests {
         );
         let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await.unwrap());
 
-        client.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = server.reader.lock().await.recv_message().await.unwrap();
+        client.stream.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = server.stream.reader.lock().await.recv_message().await.unwrap();
 
         println!("{}", std::str::from_utf8(&line).unwrap());
 

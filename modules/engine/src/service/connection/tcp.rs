@@ -24,11 +24,11 @@ mod tests {
         .await
         .unwrap();
 
-        let (_, mut writer) = connector.connect("127.0.0.1:50000").await.unwrap();
-        let (mut reader, _, _) = accepter.accept().await.unwrap();
+        let connected_stream = connector.connect("127.0.0.1:50000").await.unwrap();
+        let (accepted_stream, _) = accepter.accept().await.unwrap();
 
-        writer.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = reader.recv_message().await.unwrap();
+        connected_stream.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
+        let line: Vec<u8> = accepted_stream.reader.lock().await.recv_message().await.unwrap();
 
         println!("{}", std::str::from_utf8(&line).unwrap());
     }
