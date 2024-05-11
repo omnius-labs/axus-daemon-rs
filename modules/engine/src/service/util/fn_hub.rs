@@ -5,11 +5,13 @@ use std::{
 
 type FnBox<T, Args> = Box<dyn Fn(&Args) -> T + Send + Sync>;
 
+#[allow(unused)]
 pub struct FnHub<T, Args> {
     tasks: Arc<Mutex<HashMap<u32, FnBox<T, Args>>>>,
     next_id: Arc<Mutex<u32>>,
 }
 
+#[allow(unused)]
 impl<T, Args> FnHub<T, Args> {
     pub fn new() -> Self {
         Self {
@@ -50,12 +52,14 @@ impl<T, Args> FnExecutor<T, Args> {
     }
 }
 
+#[allow(unused)]
 #[derive(Clone)]
 pub struct FnRegistrar<T, Args> {
     tasks: Arc<Mutex<HashMap<u32, FnBox<T, Args>>>>,
     next_id: Arc<Mutex<u32>>,
 }
 
+#[allow(unused)]
 impl<T, Args> FnRegistrar<T, Args> {
     pub fn register<F>(&self, f: F) -> FnHandle<T, Args>
     where

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::OmniHash;
+use core_omnius::OmniHash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AssetKey {

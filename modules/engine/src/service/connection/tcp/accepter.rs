@@ -6,7 +6,7 @@ use std::{
 use async_trait::async_trait;
 use tokio::net::TcpListener;
 
-use crate::service::connection::FramedStream;
+use core_omnius::FramedStream;
 
 use super::UpnpClient;
 

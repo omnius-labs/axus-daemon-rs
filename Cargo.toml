@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "./refs/core-rs/modules/base",
+    "./refs/core-rs/modules/omnius",
     "./refs/core-rs/modules/testkit",
 
     "./entrypoints/daemon",
@@ -16,6 +17,7 @@ version = "0.1.0"
 
 [workspace.dependencies]
 core-base = { path = "./refs/core-rs/modules/base" }
+core-omnius = { path = "./refs/core-rs/modules/omnius" }
 core-testkit = { path = "./refs/core-rs/modules/testkit" }
 
 rand = "0.8.5"

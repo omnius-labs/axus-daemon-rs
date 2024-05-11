@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::model::OmniSignature;
+use core_omnius::OmniSignature;
 
 bitflags! {
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

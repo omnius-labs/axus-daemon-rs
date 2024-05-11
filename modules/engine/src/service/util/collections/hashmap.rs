@@ -15,6 +15,7 @@ pub struct VolatileHashMap<K, V> {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
+#[allow(unused)]
 impl<K, V> VolatileHashMap<K, V>
 where
     K: Hash + Eq,

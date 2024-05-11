@@ -199,8 +199,10 @@ mod tests {
     use testresult::TestResult;
     use tracing::info;
 
+    use core_omnius::{OmniAddress, OmniSignType, OmniSigner};
+
     use crate::{
-        model::{NodeProfile, OmniAddress, OmniSignType, OmniSigner},
+        model::NodeProfile,
         service::{
             connection::{
                 ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,

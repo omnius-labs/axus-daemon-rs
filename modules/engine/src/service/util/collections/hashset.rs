@@ -10,6 +10,7 @@ pub struct VolatileHashSet<T> {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
+#[allow(unused)]
 impl<T> VolatileHashSet<T>
 where
     T: Hash + Eq,

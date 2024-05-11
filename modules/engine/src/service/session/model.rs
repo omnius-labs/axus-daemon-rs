@@ -1,7 +1,4 @@
-use crate::{
-    model::{OmniAddress, OmniSignature},
-    service::connection::FramedStream,
-};
+use core_omnius::{FramedStream, OmniAddress, OmniSignature};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionType {

@@ -275,6 +275,7 @@ dependencies = [
  "ciborium",
  "config",
  "core-base",
+ "core-omnius",
  "crc",
  "ed25519-dalek",
  "fast-socks5",
@@ -602,6 +603,49 @@ name = "core-foundation-sys"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
+
+[[package]]
+name = "core-omnius"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "bitflags 2.4.2",
+ "chrono",
+ "ciborium",
+ "config",
+ "core-base",
+ "crc",
+ "ed25519-dalek",
+ "fast-socks5",
+ "futures",
+ "futures-util",
+ "hex",
+ "nom",
+ "once_cell",
+ "pin-utils",
+ "rand",
+ "rand_chacha",
+ "rand_core",
+ "ring 0.17.8",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sha3",
+ "sqlx",
+ "tempfile",
+ "testcontainers",
+ "testresult",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+]
 
 [[package]]
 name = "core-testkit"

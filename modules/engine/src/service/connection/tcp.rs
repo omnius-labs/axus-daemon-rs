@@ -8,9 +8,10 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
+    use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _};
+
     use crate::service::connection::{
-        AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
-        TcpProxyOption, TcpProxyType,
+        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
     };
 
     #[tokio::test]

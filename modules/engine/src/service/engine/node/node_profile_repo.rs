@@ -127,10 +127,12 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::DateTime;
-    use core_base::clock::FakeClockUtc;
     use testresult::TestResult;
 
-    use crate::model::{NodeProfile, OmniAddress};
+    use core_base::clock::FakeClockUtc;
+    use core_omnius::OmniAddress;
+
+    use crate::model::NodeProfile;
 
     use super::NodeProfileRepo;
 

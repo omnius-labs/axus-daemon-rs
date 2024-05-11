@@ -9,6 +9,7 @@ stable-test = []
 
 [dependencies]
 core-base = { workspace = true }
+core-omnius = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }

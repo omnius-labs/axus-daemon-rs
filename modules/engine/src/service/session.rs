@@ -11,16 +11,13 @@ mod tests {
     use std::sync::Arc;
 
     use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
+    use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _, OmniAddress, OmniSignType, OmniSigner};
 
-    use crate::{
-        model::{OmniAddress, OmniSignType, OmniSigner},
-        service::{
-            connection::{
-                AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
-                ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
-            },
-            session::{model::SessionType, SessionAccepter, SessionConnector},
+    use crate::service::{
+        connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
         },
+        session::{model::SessionType, SessionAccepter, SessionConnector},
     };
 
     #[tokio::test]

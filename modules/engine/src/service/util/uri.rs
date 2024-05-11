@@ -83,10 +83,9 @@ impl UriConverter {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        model::{NodeProfile, OmniAddress},
-        service::util::UriConverter,
-    };
+    use core_omnius::OmniAddress;
+
+    use crate::{model::NodeProfile, service::util::UriConverter};
 
     #[test]
     pub fn node_profile_test() {

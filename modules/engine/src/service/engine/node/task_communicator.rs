@@ -6,6 +6,7 @@ use std::{
 use bitflags::bitflags;
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
+use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _};
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -19,7 +20,6 @@ use tracing::{info, warn};
 use crate::{
     model::{AssetKey, NodeProfile},
     service::{
-        connection::{AsyncRecvExt as _, AsyncSendExt},
         engine::node::{ReceivedDataMessage, SendingDataMessage},
         session::model::Session,
         util::WaitGroup,
