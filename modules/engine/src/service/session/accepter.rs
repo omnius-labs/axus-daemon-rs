@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
-use core_omnius::{AsyncRecvExt, AsyncSendExt as _, OmniAddress, OmniSigner};
+use core_omnius::{
+    connection::framed::{FramedRecvExt as _, FramedSendExt as _},
+    OmniAddr, OmniSigner,
+};
 use futures::{future::join_all, FutureExt};
 use tokio::{
     sync::{mpsc, Mutex as TokioMutex},
@@ -153,8 +156,8 @@ impl Inner {
         let (stream, addr) = self.tcp_connector.accept().await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.writer.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.reader.lock().await.recv_message().await?;
+        stream.sender.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -165,19 +168,19 @@ impl Inner {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.writer.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.reader.lock().await.recv_message().await?;
+            stream.sender.lock().await.send_message(&send_challenge_message).await?;
+            let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
-            let send_signature_message = V1SignatureMessage { signature: send_signature };
-            stream.writer.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.reader.lock().await.recv_message().await?;
+            let send_signature_message = V1SignatureMessage { cert: send_signature };
+            stream.sender.lock().await.send_message(&send_signature_message).await?;
+            let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
-            if received_signature_message.signature.verify(send_nonce.as_slice()).is_err() {
+            if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
                 anyhow::bail!("Invalid signature")
             }
 
-            let received_session_request_message: V1RequestMessage = stream.reader.lock().await.recv_message().await?;
+            let received_session_request_message: V1RequestMessage = stream.receiver.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
@@ -185,13 +188,13 @@ impl Inner {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Accept,
                 };
-                stream.writer.lock().await.send_message(&send_session_result_message).await?;
+                stream.sender.lock().await.send_message(&send_session_result_message).await?;
 
                 let session = Session {
                     typ: typ.clone(),
-                    address: OmniAddress::new(format!("tcp({})", addr).as_str()),
+                    address: OmniAddr::new(format!("tcp({})", addr).as_str()),
                     handshake_type: SessionHandshakeType::Accepted,
-                    signature: received_signature_message.signature,
+                    cert: received_signature_message.cert,
                     stream,
                 };
                 permit.send(session);
@@ -199,7 +202,7 @@ impl Inner {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Reject,
                 };
-                stream.writer.lock().await.send_message(&send_session_result_message).await?;
+                stream.sender.lock().await.send_message(&send_session_result_message).await?;
             }
 
             Ok(())

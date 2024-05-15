@@ -2,12 +2,12 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use core_omnius::OmniAddress;
+use core_omnius::OmniAddr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
 pub struct NodeProfile {
     pub id: Vec<u8>,
-    pub addrs: Vec<OmniAddress>,
+    pub addrs: Vec<OmniAddr>,
 }
 
 impl fmt::Display for NodeProfile {

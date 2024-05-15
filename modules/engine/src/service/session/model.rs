@@ -1,4 +1,6 @@
-use core_omnius::{FramedStream, OmniAddress, OmniSignature};
+use core_omnius::{OmniAddr, OmniCert};
+
+use crate::connection::FramedStream;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionType {
@@ -14,8 +16,8 @@ pub enum SessionHandshakeType {
 #[derive(Clone)]
 pub struct Session {
     pub typ: SessionType,
-    pub address: OmniAddress,
+    pub address: OmniAddr,
     pub handshake_type: SessionHandshakeType,
-    pub signature: OmniSignature,
+    pub cert: OmniCert,
     pub stream: FramedStream,
 }

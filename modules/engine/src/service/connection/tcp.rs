@@ -8,7 +8,9 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _};
+    use testresult::TestResult;
+
+    use core_omnius::connection::framed::{FramedRecvExt as _, FramedSendExt as _};
 
     use crate::service::connection::{
         ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
@@ -16,21 +18,22 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn simple_test() {
-        let accepter = ConnectionTcpAccepterImpl::new("127.0.0.1:50000", false).await.unwrap();
+    async fn simple_test() -> TestResult {
+        let accepter = ConnectionTcpAccepterImpl::new("127.0.0.1:50000", false).await?;
         let connector = ConnectionTcpConnectorImpl::new(TcpProxyOption {
             typ: TcpProxyType::None,
             addr: None,
         })
-        .await
-        .unwrap();
+        .await?;
 
-        let connected_stream = connector.connect("127.0.0.1:50000").await.unwrap();
-        let (accepted_stream, _) = accepter.accept().await.unwrap();
+        let connected_stream = connector.connect("127.0.0.1:50000").await?;
+        let (accepted_stream, _) = accepter.accept().await?;
 
-        connected_stream.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = accepted_stream.reader.lock().await.recv_message().await.unwrap();
+        connected_stream.sender.lock().await.send_message(b"Hello, World!").await?;
+        let line: Vec<u8> = accepted_stream.receiver.lock().await.recv_message().await?;
 
-        println!("{}", std::str::from_utf8(&line).unwrap());
+        println!("{}", std::str::from_utf8(&line)?);
+
+        Ok(())
     }
 }

@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use core_base::random_bytes::RandomBytesProvider;
-use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _, OmniAddress, OmniSigner};
+use core_omnius::{
+    connection::framed::{FramedRecvExt as _, FramedSendExt as _},
+    OmniAddr, OmniSigner,
+};
 
 use crate::service::{
     connection::ConnectionTcpConnector,
@@ -32,12 +35,12 @@ impl SessionConnector {
         }
     }
 
-    pub async fn connect(&self, address: &OmniAddress, typ: &SessionType) -> anyhow::Result<Session> {
+    pub async fn connect(&self, address: &OmniAddr, typ: &SessionType) -> anyhow::Result<Session> {
         let stream = self.tcp_connector.connect(address.parse_tcp()?.as_str()).await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.writer.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.reader.lock().await.recv_message().await?;
+        stream.sender.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -48,15 +51,15 @@ impl SessionConnector {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.writer.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.reader.lock().await.recv_message().await?;
+            stream.sender.lock().await.send_message(&send_challenge_message).await?;
+            let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
-            let send_signature_message = V1SignatureMessage { signature: send_signature };
-            stream.writer.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.reader.lock().await.recv_message().await?;
+            let send_signature_message = V1SignatureMessage { cert: send_signature };
+            stream.sender.lock().await.send_message(&send_signature_message).await?;
+            let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
-            if received_signature_message.signature.verify(send_nonce.as_slice()).is_err() {
+            if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
                 anyhow::bail!("Invalid signature")
             }
 
@@ -65,8 +68,8 @@ impl SessionConnector {
                     SessionType::NodeFinder => V1RequestType::NodeExchanger,
                 },
             };
-            stream.writer.lock().await.send_message(&send_session_request_message).await?;
-            let received_session_result_message: V1ResultMessage = stream.reader.lock().await.recv_message().await?;
+            stream.sender.lock().await.send_message(&send_session_request_message).await?;
+            let received_session_result_message: V1ResultMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_session_result_message.result_type == V1ResultType::Reject {
                 anyhow::bail!("Session rejected")
@@ -76,7 +79,7 @@ impl SessionConnector {
                 typ: typ.clone(),
                 address: address.clone(),
                 handshake_type: SessionHandshakeType::Connected,
-                signature: received_signature_message.signature,
+                cert: received_signature_message.cert,
                 stream,
             };
 

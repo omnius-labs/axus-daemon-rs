@@ -6,7 +6,7 @@ use std::{
 use bitflags::bitflags;
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
-use core_omnius::{AsyncRecvExt as _, AsyncSendExt as _};
+use core_omnius::connection::framed::{FramedRecvExt as _, FramedSendExt as _};
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -157,8 +157,8 @@ impl Inner {
         let send_hello_message = HelloMessage {
             version: NodeFinderVersion::V1,
         };
-        session.stream.writer.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = session.stream.reader.lock().await.recv_message().await?;
+        session.stream.sender.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = session.stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -166,8 +166,8 @@ impl Inner {
             let send_profile_message = ProfileMessage {
                 node_profile: node_profile.clone(),
             };
-            session.stream.writer.lock().await.send_message(&send_profile_message).await?;
-            let received_profile_message: ProfileMessage = session.stream.reader.lock().await.recv_message().await?;
+            session.stream.sender.lock().await.send_message(&send_profile_message).await?;
+            let received_profile_message: ProfileMessage = session.stream.receiver.lock().await.recv_message().await?;
 
             Ok(received_profile_message.node_profile)
         } else {
@@ -206,7 +206,7 @@ impl Inner {
                 }
             };
 
-            status.session.stream.writer.lock().await.send_message(&data_message).await?;
+            status.session.stream.sender.lock().await.send_message(&data_message).await?;
         }
     }
 
@@ -236,7 +236,7 @@ impl Inner {
         loop {
             sleeper.sleep(std::time::Duration::from_secs(20)).await;
 
-            let data_message = status.session.stream.reader.lock().await.recv_message::<DataMessage>().await?;
+            let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
             let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
             node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;

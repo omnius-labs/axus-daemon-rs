@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use fast_socks5::client::Socks5Stream;
 use tokio::net::TcpStream;
 
-use core_omnius::FramedStream;
+use crate::connection::FramedStream;
 
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,

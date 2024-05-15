@@ -130,7 +130,7 @@ mod tests {
     use testresult::TestResult;
 
     use core_base::clock::FakeClockUtc;
-    use core_omnius::OmniAddress;
+    use core_omnius::OmniAddr;
 
     use crate::model::NodeProfile;
 
@@ -147,11 +147,11 @@ mod tests {
         let vs: Vec<NodeProfile> = vec![
             NodeProfile {
                 id: vec![0],
-                addrs: vec![OmniAddress::new("test")],
+                addrs: vec![OmniAddr::new("test")],
             },
             NodeProfile {
                 id: vec![1],
-                addrs: vec![OmniAddress::new("test")],
+                addrs: vec![OmniAddr::new("test")],
             },
         ];
         let vs_ref: Vec<&NodeProfile> = vs.iter().collect();
