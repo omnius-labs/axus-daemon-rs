@@ -49,6 +49,7 @@ crc = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

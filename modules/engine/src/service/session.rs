@@ -11,7 +11,10 @@ mod tests {
     use std::sync::Arc;
 
     use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
-    use core_omnius::{connection::framed::{FramedRecvExt as _, FramedSendExt as _}, OmniAddr, OmniSignType, OmniSigner};
+    use core_omnius::{
+        connection::framed::{FramedRecvExt as _, FramedSendExt as _},
+        OmniAddr, OmniSignType, OmniSigner,
+    };
     use testresult::TestResult;
 
     use crate::service::{

@@ -1,10 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Duration, Utc};
 use core_base::clock::Clock;
+use parking_lot::Mutex;
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -20,8 +18,8 @@ pub struct SessionStatus {
     pub session: Session,
     pub node_profile: NodeProfile,
 
-    pub sending_data_message: Arc<StdMutex<SendingDataMessage>>,
-    pub received_data_message: Arc<StdMutex<ReceivedDataMessage>>,
+    pub sending_data_message: Arc<Mutex<SendingDataMessage>>,
+    pub received_data_message: Arc<Mutex<ReceivedDataMessage>>,
 }
 
 #[allow(dead_code)]

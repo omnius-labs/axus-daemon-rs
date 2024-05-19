@@ -1,11 +1,9 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Duration, Utc};
 use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::future::join_all;
+use parking_lot::Mutex;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
@@ -22,7 +20,7 @@ use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, T
 
 #[allow(dead_code)]
 pub struct NodeFinder {
-    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeProfileRepo>,
@@ -34,7 +32,7 @@ pub struct NodeFinder {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
-    connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
+    connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
 
@@ -64,7 +62,7 @@ impl NodeFinder {
         let (tx, rx) = mpsc::channel(20);
 
         let result = Self {
-            my_node_profile: Arc::new(StdMutex::new(NodeProfile {
+            my_node_profile: Arc::new(Mutex::new(NodeProfile {
                 id: Self::gen_id(),
                 addrs: Vec::new(),
             })),
@@ -79,7 +77,7 @@ impl NodeFinder {
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
             sessions: Arc::new(TokioRwLock::new(HashMap::new())),
-            connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
+            connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
 

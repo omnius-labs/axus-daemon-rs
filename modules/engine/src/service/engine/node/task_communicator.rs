@@ -1,13 +1,11 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use bitflags::bitflags;
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
 use core_omnius::connection::framed::{FramedRecvExt as _, FramedSendExt as _};
 use futures::FutureExt;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::{
     select,
@@ -39,7 +37,7 @@ pub struct TaskCommunicator {
 
 impl TaskCommunicator {
     pub fn new(
-        my_node_profile: Arc<StdMutex<NodeProfile>>,
+        my_node_profile: Arc<Mutex<NodeProfile>>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
@@ -94,7 +92,7 @@ impl TaskCommunicator {
 
 #[derive(Clone)]
 struct Inner {
-    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -123,7 +121,7 @@ impl Inner {
     }
 
     async fn communicate_sub(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
-        let my_node_profile = self.my_node_profile.lock().unwrap().clone();
+        let my_node_profile = self.my_node_profile.lock().clone();
 
         let node_profile = Self::handshake(&session, &my_node_profile).await?;
 
@@ -131,8 +129,8 @@ impl Inner {
             handshake_type,
             session,
             node_profile: node_profile.clone(),
-            sending_data_message: Arc::new(StdMutex::new(SendingDataMessage::default())),
-            received_data_message: Arc::new(StdMutex::new(ReceivedDataMessage::new(self.clock.clone()))),
+            sending_data_message: Arc::new(Mutex::new(SendingDataMessage::default())),
+            received_data_message: Arc::new(Mutex::new(ReceivedDataMessage::new(self.clock.clone()))),
         };
 
         {
@@ -197,7 +195,7 @@ impl Inner {
             sleeper.sleep(std::time::Duration::from_secs(30)).await;
 
             let data_message = {
-                let mut sending_data_message = status.sending_data_message.lock().unwrap();
+                let mut sending_data_message = status.sending_data_message.lock();
                 DataMessage {
                     push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
                     want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
@@ -243,7 +241,7 @@ impl Inner {
             node_profile_repo.shrink(1024).await?;
 
             {
-                let mut received_data_message = status.received_data_message.lock().unwrap();
+                let mut received_data_message = status.received_data_message.lock();
                 received_data_message
                     .want_asset_keys
                     .extend(data_message.want_asset_keys.into_iter().map(Arc::new));

@@ -1,7 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
+
+use parking_lot::Mutex;
 
 type FnBox<T, Args> = Box<dyn Fn(&Args) -> T + Send + Sync>;
 
@@ -47,7 +46,7 @@ pub struct FnExecutor<T, Args> {
 
 impl<T, Args> FnExecutor<T, Args> {
     pub fn execute(&self, args: &Args) -> Vec<T> {
-        let tasks = self.tasks.lock().unwrap();
+        let tasks = self.tasks.lock();
         tasks.values().map(|f| f(args)).collect()
     }
 }
@@ -65,8 +64,8 @@ impl<T, Args> FnRegistrar<T, Args> {
     where
         F: Fn(&Args) -> T + Send + Sync + 'static,
     {
-        let mut tasks = self.tasks.lock().unwrap();
-        let mut id = self.next_id.lock().unwrap();
+        let mut tasks = self.tasks.lock();
+        let mut id = self.next_id.lock();
         let current_id = *id;
         tasks.insert(current_id, Box::new(f));
         *id += 1;
@@ -84,7 +83,7 @@ pub struct FnHandle<T, Args> {
 
 impl<T, Args> Drop for FnHandle<T, Args> {
     fn drop(&mut self) {
-        let mut tasks = self.tasks.lock().unwrap();
+        let mut tasks = self.tasks.lock();
         tasks.remove(&self.id);
     }
 }
@@ -98,7 +97,7 @@ mod tests {
         let hub = FnHub::<i32, ()>::new();
         let registrar = hub.registrar();
         let _cookie = registrar.register(|_| 42);
-        assert_eq!(registrar.tasks.lock().unwrap().len(), 1);
+        assert_eq!(registrar.tasks.lock().len(), 1);
         let executor = hub.executor();
         assert_eq!(executor.execute(&()), vec![42]);
     }
@@ -110,6 +109,6 @@ mod tests {
         {
             let _cookie = registrar.register(|_| 42);
         } // _cookie is dropped here
-        assert!(registrar.tasks.lock().unwrap().is_empty());
+        assert!(registrar.tasks.lock().is_empty());
     }
 }

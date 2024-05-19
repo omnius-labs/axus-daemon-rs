@@ -1,10 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex as StdMutex},
+    sync::Arc,
 };
 
 use core_base::sleeper::Sleeper;
 use futures::FutureExt;
+use parking_lot::Mutex;
 use rand::seq::SliceRandom as _;
 use tokio::{
     sync::{Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -28,7 +29,7 @@ pub struct TaskComputer {
 
 impl TaskComputer {
     pub fn new(
-        my_node_profile: Arc<StdMutex<NodeProfile>>,
+        my_node_profile: Arc<Mutex<NodeProfile>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
@@ -79,7 +80,7 @@ impl TaskComputer {
 
 #[derive(Clone)]
 struct Inner {
-    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
@@ -104,7 +105,7 @@ impl Inner {
 
     #[allow(clippy::type_complexity)]
     async fn compute_sending_data_message(&self) -> anyhow::Result<()> {
-        let my_node_profile = Arc::new(self.my_node_profile.lock().unwrap().clone());
+        let my_node_profile = Arc::new(self.my_node_profile.lock().clone());
         let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.get_node_profiles().await?.into_iter().map(Arc::new).collect();
 
         let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self.get_want_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
@@ -114,7 +115,7 @@ impl Inner {
         {
             let sessions = self.sessions.read().await;
             for (id, status) in sessions.iter() {
-                let data = status.received_data_message.lock().unwrap();
+                let data = status.received_data_message.lock();
 
                 let mut want_asset_keys: Vec<Arc<AssetKey>> = data.want_asset_keys.iter().cloned().collect();
                 let mut give_asset_key_locations: Vec<(Arc<AssetKey>, Vec<Arc<NodeProfile>>)> =
@@ -260,7 +261,7 @@ impl Inner {
             let mut sessions = self.sessions.write().await;
             for (id, status) in sessions.iter_mut() {
                 if let Some(data_message) = sending_data_map.remove(id) {
-                    *status.sending_data_message.lock().unwrap() = data_message;
+                    *status.sending_data_message.lock() = data_message;
                 }
             }
         }
