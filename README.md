@@ -1,4 +1,4 @@
-# Axus - Omnius File Exchanger (Daemon)
+# Axus - Omnius File Exchanger (Daemon) (Work in Progress)
 
 [![test](https://github.com/omnius-labs/axus-rs/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/omnius-labs/axus-rs/actions/workflows/test.yml)
 [![chat](https://badges.gitter.im/omnius-labs.svg)](https://app.gitter.im/#/room/#omnius-labs:gitter.im)
@@ -9,7 +9,7 @@ Axus is an in-development peer-to-peer (P2P) file-sharing service, written in Ru
 
 - **File Upload and Download**: Users can easily upload and download files, making data sharing effortless.
 - **File Search and Publishing**: Files can be searched and published with protection provided by a Web of Trust system, ensuring security and integrity.
-- **Bulletin Board Functionality**: Offers a platform for users to communicate and share information securely within the network.
+- **Bulletin Board Functionality**: Provides a platform within the network for users to safely exchange and share information.
 
 ## Development
 
