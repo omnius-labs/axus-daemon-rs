@@ -5,7 +5,7 @@
 
 Axus is an in-development peer-to-peer (P2P) file-sharing service, written in Rust, designed to facilitate secure and efficient data exchange.
 
-## Key Features
+## Features
 
 - **File Upload and Download**: Users can easily upload and download files, making data sharing effortless.
 - **File Search and Publishing**: Files can be searched and published with protection provided by a Web of Trust system, ensuring security and integrity.
