@@ -31,10 +31,10 @@ sudo apt-get install -y libclang-dev
 
 - Official Documentation: https://docs.omnius-labs.com/
 
-## License
-
-This project is released under the MIT License. For more details, please refer to the [LICENSE](LICENSE.txt) file.
-
 ## Contributing
 
 If you would like to contribute to this project, please contact us through [Issues](https://github.com/omnius-labs/axus-daemon-rs/issues) or [Pull Requests](https://github.com/omnius-labs/axus-daemon-rs/pulls) on GitHub.
+
+## License
+
+This project is released under the MIT License. For more details, please refer to the [LICENSE](LICENSE.txt) file.
