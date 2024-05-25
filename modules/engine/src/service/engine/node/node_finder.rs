@@ -266,7 +266,7 @@ mod tests {
 
         let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
         let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(RealSleeper);
-        let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, name)?);
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519, name)?);
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
 
         let session_accepter =

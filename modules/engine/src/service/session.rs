@@ -36,7 +36,7 @@ mod tests {
             .await?,
         );
 
-        let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, "test")?);
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519, "test")?);
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
         let sleeper = Arc::new(FakeSleeper);
 
