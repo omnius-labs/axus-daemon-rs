@@ -25,12 +25,6 @@ Axus is a peer-to-peer (P2P) file-sharing service, written in Rust, designed to 
 sudo apt-get install -y libclang-dev
 ```
 
-## Documentation
-
-- [Requirements](./docs/requirements/index.adoc)
-- [Specifications](./docs/specifications/index.adoc)
-- [FAQ](./docs/faq.md)
-
 ## Links
 
 - Official Documentation: https://docs.omnius-labs.com/
