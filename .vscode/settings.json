@@ -17,6 +17,7 @@
     "omni",
     "omnius",
     "reqwest",
+    "rocksdb",
     "rowid",
     "Seedable",
     "sqlx",

@@ -35,7 +35,7 @@ impl SqliteMigrator {
 CREATE TABLE IF NOT EXISTS _migrations (
     name TEXT NOT NULL,
     queries TEXT NOT NULL,
-    executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (name)
 );
 "#,
