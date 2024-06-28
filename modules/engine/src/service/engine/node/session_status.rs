@@ -22,6 +22,18 @@ pub struct SessionStatus {
     pub received_data_message: Arc<Mutex<ReceivedDataMessage>>,
 }
 
+impl SessionStatus {
+    pub fn new(handshake_type: HandshakeType, session: Session, node_profile: NodeProfile, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
+        Self {
+            handshake_type,
+            session,
+            node_profile,
+            sending_data_message: Arc::new(Mutex::new(SendingDataMessage::new())),
+            received_data_message: Arc::new(Mutex::new(ReceivedDataMessage::new(clock))),
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandshakeType {

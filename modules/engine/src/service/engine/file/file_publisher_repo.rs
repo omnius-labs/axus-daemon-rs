@@ -1,20 +1,20 @@
+use std::str::FromStr;
 use std::{path::Path, sync::Arc};
 
-use chrono::Utc;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use core_base::clock::Clock;
 use core_omnius::OmniHash;
-use sqlx::migrate::MigrateDatabase;
-use sqlx::QueryBuilder;
-use sqlx::{sqlite::SqlitePool, Sqlite};
+use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, Sqlite};
 
 use crate::service::util::{MigrationRequest, SqliteMigrator};
-use crate::{model::NodeProfile, service::util::UriConverter};
 
+#[allow(unused)]
 pub struct FilePublisherRepo {
     db: Arc<SqlitePool>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
+#[allow(unused)]
 impl FilePublisherRepo {
     pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS files (
     file_name TEXT NOT NULL,
     block_size INTEGER NOT NULL,
     property TEXT,
-    created_time INTEGER NOT NULL,
-    updated_time INTEGER NOT NULL,
+    created_time TIMESTAMP NOT NULL,
+    updated_time TIMESTAMP NOT NULL,
     PRIMARY KEY (root_hash, file_path)
 );
 CREATE TABLE IF NOT EXISTS blocks (
@@ -81,6 +81,20 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
+    pub async fn get_published_files(&self) -> anyhow::Result<Vec<PublishedFile>> {
+        let res: Vec<PublishedFileRow> = sqlx::query_as(
+            r#"
+SELECT root_hash, file_name, block_size, property, created_time, updated_time
+    FROM files
+"#,
+        )
+        .fetch_all(self.db.as_ref())
+        .await?;
+
+        let res: Vec<PublishedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
+        Ok(res)
+    }
+
     pub async fn block_exists(&self, root_hash: OmniHash, block_hash: OmniHash) -> anyhow::Result<bool> {
         let (res,): (i64,) = sqlx::query_as(
             r#"
@@ -97,74 +111,6 @@ SELECT COUNT(1)
 
         Ok(res > 0)
     }
-
-    pub async fn get_node_profiles(&self) -> anyhow::Result<Vec<NodeProfile>> {
-        let res: Vec<(String,)> = sqlx::query_as(
-            r#"
-SELECT value FROM node_profiles
-ORDER BY weight DESC, updated_time DESC
-"#,
-        )
-        .fetch_all(self.db.as_ref())
-        .await?;
-
-        let res: Vec<NodeProfile> = res
-            .into_iter()
-            .filter_map(|(v,)| UriConverter::decode_node_profile(v.as_str()).ok())
-            .collect();
-        Ok(res)
-    }
-
-    pub async fn insert_bulk_node_profile(&self, vs: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
-        let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
-            r#"
-INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
-"#,
-        );
-
-        let now = self.clock.now().timestamp();
-        let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
-
-        query_builder.push_values(vs, |mut b, v| {
-            b.push_bind(v);
-            b.push_bind(weight);
-            b.push_bind(now);
-            b.push_bind(now);
-        });
-        query_builder.build().execute(self.db.as_ref()).await?;
-
-        Ok(())
-    }
-
-    pub async fn shrink(&self, limit: usize) -> anyhow::Result<()> {
-        let total: i64 = sqlx::query_scalar(
-            r#"
-SELECT COUNT(*) FROM node_profiles
-"#,
-        )
-        .fetch_one(self.db.as_ref())
-        .await?;
-
-        let count_to_delete = total - limit as i64;
-
-        if count_to_delete > 0 {
-            sqlx::query(
-                r#"
-DELETE FROM node_profiles
-WHERE rowid IN (
-    SELECT rowid FROM node_profiles
-    ORDER BY updated_time ASC, rowid ASC
-    LIMIT ?
-)
-"#,
-            )
-            .bind(count_to_delete)
-            .execute(self.db.as_ref())
-            .await?;
-        }
-
-        Ok(())
-    }
 }
 
 pub struct PublishedFile {
@@ -172,12 +118,48 @@ pub struct PublishedFile {
     pub file_name: String,
     pub block_size: i64,
     pub property: Option<String>,
-    pub created_time: i64,
-    pub updated_time: i64,
+    pub created_time: DateTime<Utc>,
+    pub updated_time: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct PublishedFileRow {
+    root_hash: String,
+    file_name: String,
+    block_size: i64,
+    property: Option<String>,
+    created_time: NaiveDateTime,
+    updated_time: NaiveDateTime,
+}
+
+impl PublishedFileRow {
+    pub fn into(self) -> anyhow::Result<PublishedFile> {
+        Ok(PublishedFile {
+            root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
+            file_name: self.file_name,
+            block_size: self.block_size,
+            property: self.property,
+            created_time: DateTime::from_naive_utc_and_offset(self.created_time, Utc),
+            updated_time: DateTime::from_naive_utc_and_offset(self.updated_time, Utc),
+        })
+    }
+
+    #[allow(unused)]
+    pub fn from(item: PublishedFile) -> anyhow::Result<Self> {
+        Ok(Self {
+            root_hash: item.root_hash.to_string(),
+            file_name: item.file_name,
+            block_size: item.block_size,
+            property: item.property,
+            created_time: item.created_time.naive_utc(),
+            updated_time: item.updated_time.naive_utc(),
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use testresult::TestResult;
 
     #[tokio::test]
     pub async fn simple_test() -> TestResult {

@@ -285,6 +285,7 @@ dependencies = [
  "local-ip-address",
  "nom",
  "once_cell",
+ "p256",
  "parking_lot 0.12.2",
  "pin-utils",
  "rand",

@@ -9,6 +9,7 @@ pub struct FilePublisher {
     blob_storage: Arc<TokioMutex<BlobStorage>>,
 }
 
+#[allow(unused)]
 impl FilePublisher {
     pub async fn publish_file(self, mut reader: &mut (dyn tokio::io::AsyncRead + Unpin), file_name: &str, block_size: u64) -> anyhow::Result<Self> {
         let mut buf = vec![0; block_size as usize];
@@ -19,7 +20,7 @@ impl FilePublisher {
             }
             self.blob_storage.lock().await.put(file_name.as_bytes(), &buf[..n])?;
         }
-        Ok(Self { storage })
+        todo!()
     }
 
     // pub fn gen_key_by_tmp

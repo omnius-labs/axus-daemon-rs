@@ -10,10 +10,11 @@ pub use upnp_client::*;
 mod tests {
     use testresult::TestResult;
 
-    use core_omnius::connection::framed::{FramedRecvExt as _, FramedSendExt as _};
-
-    use crate::service::connection::{
-        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+    use crate::{
+        connection::{FramedRecvExt as _, FramedSendExt as _},
+        service::connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+        },
     };
 
     #[tokio::test]

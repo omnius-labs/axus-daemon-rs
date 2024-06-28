@@ -3,7 +3,6 @@ use std::{collections::HashMap, sync::Arc};
 use bitflags::bitflags;
 use chrono::Utc;
 use core_base::{clock::Clock, sleeper::Sleeper};
-use core_omnius::connection::framed::{FramedRecvExt as _, FramedSendExt as _};
 use futures::FutureExt;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -16,12 +15,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::{
+    connection::{FramedRecvExt as _, FramedSendExt as _},
     model::{AssetKey, NodeProfile},
-    service::{
-        engine::node::{ReceivedDataMessage, SendingDataMessage},
-        session::model::Session,
-        util::WaitGroup,
-    },
+    service::{session::model::Session, util::WaitGroup},
 };
 
 use super::{HandshakeType, NodeProfileRepo, SessionStatus};
@@ -124,21 +120,14 @@ impl Inner {
         let my_node_profile = self.my_node_profile.lock().clone();
 
         let node_profile = Self::handshake(&session, &my_node_profile).await?;
-
-        let status = SessionStatus {
-            handshake_type,
-            session,
-            node_profile: node_profile.clone(),
-            sending_data_message: Arc::new(Mutex::new(SendingDataMessage::default())),
-            received_data_message: Arc::new(Mutex::new(ReceivedDataMessage::new(self.clock.clone()))),
-        };
+        let status = SessionStatus::new(handshake_type, session, node_profile, self.clock.clone());
 
         {
             let mut sessions = self.sessions.write().await;
-            if sessions.contains_key(&node_profile.id) {
+            if sessions.contains_key(&status.node_profile.id) {
                 return Err(anyhow::anyhow!("Session already exists"));
             }
-            sessions.insert(node_profile.id, status.clone());
+            sessions.insert(status.node_profile.id.clone(), status.clone());
         }
 
         info!("Session established: {}", status.node_profile);

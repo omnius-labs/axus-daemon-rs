@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use core_base::random_bytes::RandomBytesProvider;
-use core_omnius::{
-    connection::framed::{FramedRecvExt as _, FramedSendExt as _},
-    OmniAddr, OmniSigner,
-};
+use core_omnius::{OmniAddr, OmniSigner};
 
-use crate::service::{
-    connection::ConnectionTcpConnector,
-    session::message::{V1ChallengeMessage, V1SignatureMessage},
+use crate::{
+    connection::{FramedRecvExt as _, FramedSendExt as _},
+    service::{
+        connection::ConnectionTcpConnector,
+        session::message::{V1ChallengeMessage, V1SignatureMessage},
+    },
 };
 
 use super::{

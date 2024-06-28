@@ -41,8 +41,8 @@ impl NodeProfileRepo {
 CREATE TABLE IF NOT EXISTS node_profiles (
     value TEXT NOT NULL PRIMARY KEY,
     weight INTEGER NOT NULL,
-    created_time INTEGER NOT NULL,
-    updated_time INTEGER NOT NULL
+    created_time TIMESTAMP NOT NULL,
+    updated_time TIMESTAMP NOT NULL
 );
 "#
             .to_string(),
@@ -77,7 +77,7 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
 "#,
         );
 
-        let now = self.clock.now().timestamp();
+        let now = self.clock.now().naive_utc();
         let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
 
         query_builder.push_values(vs, |mut b, v| {
