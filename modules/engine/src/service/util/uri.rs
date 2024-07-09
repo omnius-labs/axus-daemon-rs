@@ -83,16 +83,15 @@ impl UriConverter {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        model::{NodeProfile, OmniAddress},
-        service::util::UriConverter,
-    };
+    use omnius_core_omnikit::OmniAddr;
+
+    use crate::{model::NodeProfile, service::util::UriConverter};
 
     #[test]
     pub fn node_profile_test() {
         let v = NodeProfile {
             id: vec![1, 2, 3],
-            addrs: ["a", "b", "c"].into_iter().map(OmniAddress::new).collect(),
+            addrs: ["a", "b", "c"].into_iter().map(OmniAddr::new).collect(),
         };
         let s = UriConverter::encode_node_profile(&v).unwrap();
         println!("{}", s);

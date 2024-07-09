@@ -1,10 +1,9 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Duration, Utc};
-use core_base::clock::Clock;
+use parking_lot::Mutex;
+
+use omnius_core_base::clock::Clock;
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -20,8 +19,20 @@ pub struct SessionStatus {
     pub session: Session,
     pub node_profile: NodeProfile,
 
-    pub sending_data_message: Arc<StdMutex<SendingDataMessage>>,
-    pub received_data_message: Arc<StdMutex<ReceivedDataMessage>>,
+    pub sending_data_message: Arc<Mutex<SendingDataMessage>>,
+    pub received_data_message: Arc<Mutex<ReceivedDataMessage>>,
+}
+
+impl SessionStatus {
+    pub fn new(handshake_type: HandshakeType, session: Session, node_profile: NodeProfile, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
+        Self {
+            handshake_type,
+            session,
+            node_profile,
+            sending_data_message: Arc::new(Mutex::new(SendingDataMessage::new())),
+            received_data_message: Arc::new(Mutex::new(ReceivedDataMessage::new(clock))),
+        }
+    }
 }
 
 #[allow(dead_code)]

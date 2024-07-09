@@ -2,7 +2,7 @@ use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Duration, Utc};
-use core_base::clock::Clock;
+use omnius_core_base::clock::Clock;
 
 pub struct VolatileHashSet<T> {
     map: HashMap<T, DateTime<Utc>>,
@@ -10,6 +10,7 @@ pub struct VolatileHashSet<T> {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
+#[allow(unused)]
 impl<T> VolatileHashSet<T>
 where
     T: Hash + Eq,

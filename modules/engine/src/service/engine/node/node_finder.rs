@@ -1,14 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Duration, Utc};
-use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::future::join_all;
+use parking_lot::Mutex;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
+
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -22,7 +21,7 @@ use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, T
 
 #[allow(dead_code)]
 pub struct NodeFinder {
-    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeProfileRepo>,
@@ -34,7 +33,7 @@ pub struct NodeFinder {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
-    connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
+    connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
 
@@ -64,7 +63,7 @@ impl NodeFinder {
         let (tx, rx) = mpsc::channel(20);
 
         let result = Self {
-            my_node_profile: Arc::new(StdMutex::new(NodeProfile {
+            my_node_profile: Arc::new(Mutex::new(NodeProfile {
                 id: Self::gen_id(),
                 addrs: Vec::new(),
             })),
@@ -79,7 +78,7 @@ impl NodeFinder {
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
             sessions: Arc::new(TokioRwLock::new(HashMap::new())),
-            connected_node_profiles: Arc::new(StdMutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
+            connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
 
@@ -191,7 +190,7 @@ mod tests {
     use std::{fs, path::Path, sync::Arc};
 
     use chrono::Utc;
-    use core_base::{
+    use omnius_core_base::{
         clock::{Clock, RealClockUtc},
         random_bytes::RandomBytesProviderImpl,
         sleeper::{RealSleeper, Sleeper},
@@ -199,8 +198,10 @@ mod tests {
     use testresult::TestResult;
     use tracing::info;
 
+    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
+
     use crate::{
-        model::{NodeProfile, OmniAddress, OmniSignType, OmniSigner},
+        model::NodeProfile,
         service::{
             connection::{
                 ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
@@ -221,11 +222,11 @@ mod tests {
 
         let np1 = NodeProfile {
             id: "1".as_bytes().to_vec(),
-            addrs: vec![OmniAddress::new("tcp(127.0.0.1:60001)")],
+            addrs: vec![OmniAddr::new("tcp(127.0.0.1:60001)")],
         };
         let np2 = NodeProfile {
             id: "2".as_bytes().to_vec(),
-            addrs: vec![OmniAddress::new("tcp(127.0.0.1:60002)")],
+            addrs: vec![OmniAddr::new("tcp(127.0.0.1:60002)")],
         };
 
         let nf1_path = dir.path().join("1");
@@ -266,7 +267,7 @@ mod tests {
 
         let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
         let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(RealSleeper);
-        let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, name));
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519, name)?);
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
 
         let session_accepter =

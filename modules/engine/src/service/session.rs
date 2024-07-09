@@ -10,14 +10,15 @@ pub use connector::*;
 mod tests {
     use std::sync::Arc;
 
-    use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
+    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
+    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
+    use testresult::TestResult;
 
     use crate::{
-        model::{OmniAddress, OmniSignType, OmniSigner},
+        connection::{FramedRecvExt as _, FramedSendExt as _},
         service::{
             connection::{
-                AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
-                ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+                ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
             },
             session::{model::SessionType, SessionAccepter, SessionConnector},
         },
@@ -25,19 +26,17 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn simple_test() {
-        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
-            Arc::new(ConnectionTcpAccepterImpl::new("127.0.0.1:60000", false).await.unwrap());
+    async fn simple_test() -> TestResult {
+        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> = Arc::new(ConnectionTcpAccepterImpl::new("127.0.0.1:60000", false).await?);
         let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
                 addr: None,
             })
-            .await
-            .unwrap(),
+            .await?,
         );
 
-        let signer = Arc::new(OmniSigner::new(&OmniSignType::Ed25519, "test"));
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519, "test")?);
         let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
         let sleeper = Arc::new(FakeSleeper);
 
@@ -46,18 +45,19 @@ mod tests {
 
         let client = Arc::new(
             session_connector
-                .connect(&OmniAddress::new("tcp(127.0.0.1:60000)"), &SessionType::NodeFinder)
-                .await
-                .unwrap(),
+                .connect(&OmniAddr::new("tcp(127.0.0.1:60000)"), &SessionType::NodeFinder)
+                .await?,
         );
-        let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await.unwrap());
+        let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await?);
 
-        client.writer.lock().await.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = server.reader.lock().await.recv_message().await.unwrap();
+        client.stream.sender.lock().await.send_message(b"Hello, World!").await?;
+        let line: Vec<u8> = server.stream.receiver.lock().await.recv_message().await?;
 
-        println!("{}", std::str::from_utf8(&line).unwrap());
+        println!("{}", std::str::from_utf8(&line)?);
 
-        session_accepter.terminate().await.unwrap();
-        tcp_accepter.terminate().await.unwrap();
+        session_accepter.terminate().await?;
+        tcp_accepter.terminate().await?;
+
+        Ok(())
     }
 }

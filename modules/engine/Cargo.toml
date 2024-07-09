@@ -1,5 +1,5 @@
 [package]
-name = "axus-engine"
+name = "omnius-axus-engine"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
@@ -8,7 +8,8 @@ authors = { workspace = true }
 stable-test = []
 
 [dependencies]
-core-base = { workspace = true }
+omnius-core-base = { workspace = true }
+omnius-core-omnikit = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -48,6 +49,8 @@ crc = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
+parking_lot = { workspace = true }
+p256 = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

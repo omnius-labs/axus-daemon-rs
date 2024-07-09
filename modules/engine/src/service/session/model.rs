@@ -1,11 +1,6 @@
-use std::sync::Arc;
+use omnius_core_omnikit::{OmniAddr, OmniCert};
 
-use tokio::sync::Mutex as TokioMutex;
-
-use crate::{
-    model::{OmniAddress, OmniSignature},
-    service::connection::{AsyncRecv, AsyncSend},
-};
+use crate::connection::FramedStream;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionType {
@@ -21,9 +16,8 @@ pub enum SessionHandshakeType {
 #[derive(Clone)]
 pub struct Session {
     pub typ: SessionType,
-    pub address: OmniAddress,
+    pub address: OmniAddr,
     pub handshake_type: SessionHandshakeType,
-    pub signature: OmniSignature,
-    pub reader: Arc<TokioMutex<dyn AsyncRecv + Send + Sync + Unpin>>,
-    pub writer: Arc<TokioMutex<dyn AsyncSend + Send + Sync + Unpin>>,
+    pub cert: OmniCert,
+    pub stream: FramedStream,
 }

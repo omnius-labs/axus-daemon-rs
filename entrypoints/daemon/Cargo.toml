@@ -1,5 +1,5 @@
 [package]
-name = "axus-api"
+name = "omnius-axus-daemon"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }

@@ -1,11 +1,10 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
+use bitflags::bitflags;
 use chrono::Utc;
-use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::FutureExt;
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -14,17 +13,15 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+
 use crate::{
-    model::NodeProfile,
-    service::{
-        connection::{AsyncRecvExt as _, AsyncSendExt},
-        engine::node::{ReceivedDataMessage, SendingDataMessage},
-        session::model::Session,
-        util::WaitGroup,
-    },
+    connection::{FramedRecvExt as _, FramedSendExt as _},
+    model::{AssetKey, NodeProfile},
+    service::{session::model::Session, util::WaitGroup},
 };
 
-use super::{Communicator, DataMessage, HandshakeType, NodeProfileRepo, SessionStatus};
+use super::{HandshakeType, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
@@ -37,7 +34,7 @@ pub struct TaskCommunicator {
 
 impl TaskCommunicator {
     pub fn new(
-        my_node_profile: Arc<StdMutex<NodeProfile>>,
+        my_node_profile: Arc<Mutex<NodeProfile>>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
@@ -92,7 +89,7 @@ impl TaskCommunicator {
 
 #[derive(Clone)]
 struct Inner {
-    my_node_profile: Arc<StdMutex<NodeProfile>>,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -121,24 +118,17 @@ impl Inner {
     }
 
     async fn communicate_sub(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
-        let my_node_profile = self.my_node_profile.lock().unwrap().clone();
+        let my_node_profile = self.my_node_profile.lock().clone();
 
-        let node_profile = Communicator::handshake(&session, &my_node_profile).await?;
-
-        let status = SessionStatus {
-            handshake_type,
-            session,
-            node_profile: node_profile.clone(),
-            sending_data_message: Arc::new(StdMutex::new(SendingDataMessage::default())),
-            received_data_message: Arc::new(StdMutex::new(ReceivedDataMessage::new(self.clock.clone()))),
-        };
+        let node_profile = Self::handshake(&session, &my_node_profile).await?;
+        let status = SessionStatus::new(handshake_type, session, node_profile, self.clock.clone());
 
         {
             let mut sessions = self.sessions.write().await;
-            if sessions.contains_key(&node_profile.id) {
+            if sessions.contains_key(&status.node_profile.id) {
                 return Err(anyhow::anyhow!("Session already exists"));
             }
-            sessions.insert(node_profile.id, status.clone());
+            sessions.insert(status.node_profile.id.clone(), status.clone());
         }
 
         info!("Session established: {}", status.node_profile);
@@ -149,6 +139,28 @@ impl Inner {
         let _ = tokio::join!(send, receive);
 
         Ok(())
+    }
+
+    pub async fn handshake(session: &Session, node_profile: &NodeProfile) -> anyhow::Result<NodeProfile> {
+        let send_hello_message = HelloMessage {
+            version: NodeFinderVersion::V1,
+        };
+        session.stream.sender.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = session.stream.receiver.lock().await.recv_message().await?;
+
+        let version = send_hello_message.version | received_hello_message.version;
+
+        if version.contains(NodeFinderVersion::V1) {
+            let send_profile_message = ProfileMessage {
+                node_profile: node_profile.clone(),
+            };
+            session.stream.sender.lock().await.send_message(&send_profile_message).await?;
+            let received_profile_message: ProfileMessage = session.stream.receiver.lock().await.recv_message().await?;
+
+            Ok(received_profile_message.node_profile)
+        } else {
+            anyhow::bail!("Invalid version")
+        }
     }
 
     fn send(&self, status: &SessionStatus) -> JoinHandle<()> {
@@ -173,7 +185,7 @@ impl Inner {
             sleeper.sleep(std::time::Duration::from_secs(30)).await;
 
             let data_message = {
-                let mut sending_data_message = status.sending_data_message.lock().unwrap();
+                let mut sending_data_message = status.sending_data_message.lock();
                 DataMessage {
                     push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
                     want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
@@ -182,7 +194,7 @@ impl Inner {
                 }
             };
 
-            status.session.writer.lock().await.send_message(&data_message).await?;
+            status.session.stream.sender.lock().await.send_message(&data_message).await?;
         }
     }
 
@@ -212,13 +224,14 @@ impl Inner {
         loop {
             sleeper.sleep(std::time::Duration::from_secs(20)).await;
 
-            let data_message = status.session.reader.lock().await.recv_message::<DataMessage>().await?;
+            let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
             let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
             node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+            node_profile_repo.shrink(1024).await?;
 
             {
-                let mut received_data_message = status.received_data_message.lock().unwrap();
+                let mut received_data_message = status.received_data_message.lock();
                 received_data_message
                     .want_asset_keys
                     .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
@@ -240,5 +253,47 @@ impl Inner {
                 received_data_message.push_asset_key_locations.shrink(1024 * 256);
             }
         }
+    }
+}
+
+bitflags! {
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+      struct NodeFinderVersion: u32 {
+        const V1 = 1;
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct HelloMessage {
+    pub version: NodeFinderVersion,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct ProfileMessage {
+    pub node_profile: NodeProfile,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct DataMessage {
+    pub push_node_profiles: Vec<NodeProfile>,
+    pub want_asset_keys: Vec<AssetKey>,
+    pub give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+    pub push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+}
+
+impl DataMessage {
+    pub fn new() -> Self {
+        Self {
+            push_node_profiles: vec![],
+            want_asset_keys: vec![],
+            give_asset_key_locations: HashMap::new(),
+            push_asset_key_locations: HashMap::new(),
+        }
+    }
+}
+
+impl Default for DataMessage {
+    fn default() -> Self {
+        Self::new()
     }
 }

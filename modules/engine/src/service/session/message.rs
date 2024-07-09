@@ -1,7 +1,6 @@
 use bitflags::bitflags;
+use omnius_core_omnikit::OmniCert;
 use serde::{Deserialize, Serialize};
-
-use crate::model::OmniSignature;
 
 bitflags! {
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +21,7 @@ pub struct V1ChallengeMessage {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct V1SignatureMessage {
-    pub signature: OmniSignature,
+    pub cert: OmniCert,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

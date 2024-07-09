@@ -56,6 +56,7 @@ impl Kadex {
             .collect::<Vec<&'a [u8]>>()
     }
 
+    #[allow(unused)]
     pub fn distance(x: &[u8], y: &[u8]) -> u8 {
         let mut res: u8 = 0;
         let len = cmp::min(x.len(), y.len());

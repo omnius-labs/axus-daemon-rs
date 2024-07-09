@@ -1,4 +1,7 @@
 #![feature(ip)]
 
-pub mod model;
-pub mod service;
+mod model;
+mod service;
+
+pub use model::*;
+pub use service::*;

@@ -1,10 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
-use core_base::sleeper::Sleeper;
 use futures::FutureExt;
+use parking_lot::Mutex;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::{
@@ -12,6 +9,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::warn;
+
+use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
     model::NodeProfile,
@@ -38,7 +37,7 @@ impl TaskConnector {
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_connector: Arc<SessionConnector>,
-        connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
+        connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOptions,
@@ -86,7 +85,7 @@ struct Inner {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_connector: Arc<SessionConnector>,
-    connected_node_profiles: Arc<StdMutex<VolatileHashSet<NodeProfile>>>,
+    connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     option: NodeFinderOptions,
 }
@@ -104,7 +103,7 @@ impl Inner {
             return Ok(());
         }
 
-        self.connected_node_profiles.lock().unwrap().refresh();
+        self.connected_node_profiles.lock().refresh();
 
         let mut rng = ChaCha20Rng::from_entropy();
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
@@ -120,14 +119,14 @@ impl Inner {
             anyhow::bail!("Already connected 1");
         }
 
-        if self.connected_node_profiles.lock().unwrap().contains(node_profile) {
+        if self.connected_node_profiles.lock().contains(node_profile) {
             anyhow::bail!("Already connected 2");
         }
 
         for addr in node_profile.addrs.iter() {
             if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
                 self.session_sender.lock().await.send((HandshakeType::Connected, session)).await?;
-                self.connected_node_profiles.lock().unwrap().insert(node_profile.clone());
+                self.connected_node_profiles.lock().insert(node_profile.clone());
             }
         }
 

@@ -15,12 +15,17 @@
     "Kadex",
     "kadx",
     "omni",
+    "omnikit",
+    "omnius",
     "reqwest",
+    "rocksdb",
+    "rowid",
     "Seedable",
     "sqlx",
     "tempdir",
     "tempfile",
     "testresult",
+    "Tsid",
     "Upnp"
   ]
 }

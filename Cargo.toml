@@ -1,9 +1,10 @@
 [workspace]
 members = [
     "./refs/core-rs/modules/base",
+    "./refs/core-rs/modules/omnikit",
     "./refs/core-rs/modules/testkit",
 
-    "./modules/api",
+    "./entrypoints/daemon",
     "./modules/engine",
 ]
 exclude = ["refs/core-rs"]
@@ -15,8 +16,9 @@ authors = ["Lyrise <lyrise1984@gmail.com>"]
 version = "0.1.0"
 
 [workspace.dependencies]
-core-base = { path = "./refs/core-rs/modules/base" }
-core-testkit = { path = "./refs/core-rs/modules/testkit" }
+omnius-core-base = { path = "./refs/core-rs/modules/base" }
+omnius-core-omnikit = { path = "./refs/core-rs/modules/omnikit" }
+omnius-core-testkit = { path = "./refs/core-rs/modules/testkit" }
 
 rand = "0.8.5"
 rand_chacha = "0.3.1"
@@ -80,3 +82,7 @@ bitflags = { version = "2.4.2", features = ["serde"] }
 tempfile = "3.10.0"
 crc = "3.0.1"
 testresult = "0.4.0"
+p256 = { version = "0.13.2", features = ["ecdh"] }
+hkdf = "0.12.4"
+aes-gcm = "0.10.3"
+parking_lot = "0.12.2"

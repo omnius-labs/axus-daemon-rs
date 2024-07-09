@@ -8,28 +8,33 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::service::connection::{
-        AsyncRecvExt as _, AsyncSendExt as _, ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl,
-        TcpProxyOption, TcpProxyType,
+    use testresult::TestResult;
+
+    use crate::{
+        connection::{FramedRecvExt as _, FramedSendExt as _},
+        service::connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+        },
     };
 
     #[tokio::test]
     #[ignore]
-    async fn simple_test() {
-        let accepter = ConnectionTcpAccepterImpl::new("127.0.0.1:50000", false).await.unwrap();
+    async fn simple_test() -> TestResult {
+        let accepter = ConnectionTcpAccepterImpl::new("127.0.0.1:50000", false).await?;
         let connector = ConnectionTcpConnectorImpl::new(TcpProxyOption {
             typ: TcpProxyType::None,
             addr: None,
         })
-        .await
-        .unwrap();
+        .await?;
 
-        let (_, mut writer) = connector.connect("127.0.0.1:50000").await.unwrap();
-        let (mut reader, _, _) = accepter.accept().await.unwrap();
+        let connected_stream = connector.connect("127.0.0.1:50000").await?;
+        let (accepted_stream, _) = accepter.accept().await?;
 
-        writer.send_message(b"Hello, World!").await.unwrap();
-        let line: Vec<u8> = reader.recv_message().await.unwrap();
+        connected_stream.sender.lock().await.send_message(b"Hello, World!").await?;
+        let line: Vec<u8> = accepted_stream.receiver.lock().await.recv_message().await?;
 
-        println!("{}", std::str::from_utf8(&line).unwrap());
+        println!("{}", std::str::from_utf8(&line)?);
+
+        Ok(())
     }
 }
