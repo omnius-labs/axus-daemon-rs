@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use core_omnius::OmniCert;
+use omnius_core_omnikit::OmniCert;
 use serde::{Deserialize, Serialize};
 
 bitflags! {

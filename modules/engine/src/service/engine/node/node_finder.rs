@@ -1,12 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Duration, Utc};
-use core_base::{clock::Clock, sleeper::Sleeper};
 use futures::future::join_all;
 use parking_lot::Mutex;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
+
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -189,7 +190,7 @@ mod tests {
     use std::{fs, path::Path, sync::Arc};
 
     use chrono::Utc;
-    use core_base::{
+    use omnius_core_base::{
         clock::{Clock, RealClockUtc},
         random_bytes::RandomBytesProviderImpl,
         sleeper::{RealSleeper, Sleeper},
@@ -197,7 +198,7 @@ mod tests {
     use testresult::TestResult;
     use tracing::info;
 
-    use core_omnius::{OmniAddr, OmniSignType, OmniSigner};
+    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
 
     use crate::{
         model::NodeProfile,

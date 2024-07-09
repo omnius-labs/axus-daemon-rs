@@ -10,8 +10,8 @@ pub use connector::*;
 mod tests {
     use std::sync::Arc;
 
-    use core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
-    use core_omnius::{OmniAddr, OmniSignType, OmniSigner};
+    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
+    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
     use testresult::TestResult;
 
     use crate::{

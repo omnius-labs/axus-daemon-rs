@@ -3,7 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use core_base::sleeper::Sleeper;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use rand::seq::SliceRandom as _;
@@ -12,6 +11,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::warn;
+
+use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
     model::{AssetKey, NodeProfile},

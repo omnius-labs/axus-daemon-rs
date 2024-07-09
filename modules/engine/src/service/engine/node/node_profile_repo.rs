@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
-use core_base::clock::Clock;
+use omnius_core_base::clock::Clock;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::QueryBuilder;
 use sqlx::{sqlite::SqlitePool, Sqlite};
@@ -129,8 +129,8 @@ mod tests {
     use chrono::DateTime;
     use testresult::TestResult;
 
-    use core_base::clock::FakeClockUtc;
-    use core_omnius::OmniAddr;
+    use omnius_core_base::clock::FakeClockUtc;
+    use omnius_core_omnikit::OmniAddr;
 
     use crate::model::NodeProfile;
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use core_base::random_bytes::RandomBytesProvider;
-use core_omnius::{OmniAddr, OmniSigner};
+use omnius_core_base::random_bytes::RandomBytesProvider;
+use omnius_core_omnikit::{OmniAddr, OmniSigner};
 
 use crate::{
     connection::{FramedRecvExt as _, FramedSendExt as _},

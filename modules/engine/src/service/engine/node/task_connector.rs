@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use core_base::sleeper::Sleeper;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use rand::{seq::SliceRandom, SeedableRng};
@@ -10,6 +9,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::warn;
+
+use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
     model::NodeProfile,

@@ -1,4 +1,4 @@
-use core_omnius::{OmniAddr, OmniCert};
+use omnius_core_omnikit::{OmniAddr, OmniCert};
 
 use crate::connection::FramedStream;
 

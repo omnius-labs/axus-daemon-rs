@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
-use core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
-use core_omnius::{OmniAddr, OmniSigner};
+use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
 use futures::{future::join_all, FutureExt};
+use omnius_core_omnikit::{OmniAddr, OmniSigner};
 use tokio::{
     sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,

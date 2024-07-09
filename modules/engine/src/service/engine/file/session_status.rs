@@ -3,8 +3,8 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use parking_lot::Mutex;
 
-use core_base::clock::Clock;
-use core_omnius::OmniHash;
+use omnius_core_base::clock::Clock;
+use omnius_core_omnikit::OmniHash;
 
 use crate::{service::util::VolatileHashSet, session::model::Session};
 

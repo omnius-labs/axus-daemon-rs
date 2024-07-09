@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use core_omnius::OmniAddr;
+use omnius_core_omnikit::OmniAddr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
 pub struct NodeProfile {

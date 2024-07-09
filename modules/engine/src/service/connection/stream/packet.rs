@@ -1,6 +1,7 @@
+use std::io::Write as _;
+
 use async_trait::async_trait;
-use core_omnius::connection::framed::{FramedRecv, FramedSend};
-use p256::pkcs8::der::Writer;
+use omnius_core_omnikit::connection::framed::{FramedRecv, FramedSend};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio_util::bytes::{Buf, BufMut, Bytes, BytesMut};
 
@@ -41,13 +42,13 @@ where
 enum PacketType {
     #[allow(unused)]
     Unknown = 0,
-    V1 = 1,
+    Cbor = 1,
 }
 
 impl From<u8> for PacketType {
     fn from(value: u8) -> Self {
         match value {
-            1 => PacketType::V1,
+            1 => PacketType::Cbor,
             _ => PacketType::Unknown,
         }
     }
@@ -60,7 +61,7 @@ impl Packet {
         let buffer = BytesMut::new();
         let mut writer = buffer.writer();
 
-        writer.write_byte(PacketType::V1 as u8)?;
+        writer.write_all(&[PacketType::Cbor as u8])?;
 
         ciborium::ser::into_writer(&item, &mut writer)?;
         let buffer = writer.into_inner().freeze();
@@ -75,9 +76,9 @@ impl Packet {
         }
 
         match PacketType::from(buf.get_u8()) {
-            PacketType::V1 => {
-                let mut reader = buf.reader();
-                let item = ciborium::de::from_reader(&mut reader)?;
+            PacketType::Cbor => {
+                let reader = buf.reader();
+                let item = ciborium::de::from_reader(reader)?;
                 Ok(item)
             }
             _ => Err(anyhow::anyhow!("Invalid packet type")),
