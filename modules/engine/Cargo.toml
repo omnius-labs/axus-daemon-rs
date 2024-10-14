@@ -10,6 +10,7 @@ stable-test = []
 [dependencies]
 omnius-core-base = { workspace = true }
 omnius-core-omnikit = { workspace = true }
+omnius-core-rocketpack = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -50,7 +51,8 @@ chrono = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 parking_lot = { workspace = true }
-p256 = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures::{future::join_all, FutureExt};
+use parking_lot::Mutex;
 use tokio::{
     sync::{mpsc, Mutex as TokioMutex},
     task::JoinHandle,
@@ -26,7 +27,7 @@ use super::{
 pub struct SessionAccepter {
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
-    random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+    random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     receivers: Arc<TokioMutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
     senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
@@ -37,7 +38,7 @@ impl SessionAccepter {
     pub async fn new(
         tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
-        random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+        random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
         let senders = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
@@ -105,7 +106,7 @@ impl TaskAccepter {
         senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
         tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
-        random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+        random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
         let inner = Inner {
@@ -149,7 +150,7 @@ struct Inner {
     senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
-    random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+    random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
 }
 
 impl Inner {
@@ -165,6 +166,7 @@ impl Inner {
         if version.contains(SessionVersion::V1) {
             let send_nonce: [u8; 32] = self
                 .random_bytes_provider
+                .lock()
                 .get_bytes(32)
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
@@ -183,6 +185,7 @@ impl Inner {
 
             let received_session_request_message: V1RequestMessage = stream.receiver.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
+                V1RequestType::Unknown => anyhow::bail!("Unknown request type"),
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
             if let Ok(permit) = self.senders.lock().await.get(&typ).unwrap().try_reserve() {

@@ -1,4 +1,3 @@
-mod cbor;
 mod collections;
 mod fn_hub;
 mod kadx;
@@ -6,7 +5,6 @@ mod sqlite;
 mod uri;
 mod wait_group;
 
-pub use cbor::*;
 pub use collections::*;
 pub use fn_hub::*;
 pub use kadx::*;

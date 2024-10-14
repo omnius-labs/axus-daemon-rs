@@ -2,10 +2,8 @@ use crate::model::NodeProfile;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64, Engine};
 use crc::{Crc, CRC_32_ISCSI};
-use serde::{de::DeserializeOwned, Serialize};
+use omnius_core_rocketpack::RocketMessage;
 use tokio_util::bytes::Bytes;
-
-use super::Cbor;
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -20,8 +18,8 @@ impl UriConverter {
         Self::decode("node", text)
     }
 
-    fn encode<T: Serialize>(typ: &str, v: &T) -> anyhow::Result<String> {
-        let body = Cbor::serialize(v)?;
+    fn encode<T: RocketMessage>(typ: &str, v: &T) -> anyhow::Result<String> {
+        let body = v.export()?;
         let crc = CASTAGNOLI.checksum(&body).to_le_bytes();
 
         let body = BASE64.encode(&body);
@@ -37,7 +35,7 @@ impl UriConverter {
         Ok(s)
     }
 
-    fn decode<T: DeserializeOwned>(typ: &str, text: &str) -> anyhow::Result<T> {
+    fn decode<T: RocketMessage>(typ: &str, text: &str) -> anyhow::Result<T> {
         let text = Self::try_parse_schema(typ, text)?;
         let (text, version) = Self::try_parse_version(text)?;
 
@@ -47,17 +45,17 @@ impl UriConverter {
         }
     }
 
-    fn decode_v1<T: DeserializeOwned>(text: &str) -> anyhow::Result<T> {
+    fn decode_v1<T: RocketMessage>(text: &str) -> anyhow::Result<T> {
         let (crc, body) = Self::try_parse_body(text)?;
 
         let crc = <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| anyhow::anyhow!("invalid crc"))?;
-        let body = Bytes::from(BASE64.decode(body.as_bytes())?);
+        let mut body = Bytes::from(BASE64.decode(body.as_bytes())?);
 
         if crc != CASTAGNOLI.checksum(body.as_ref()).to_le_bytes() {
             anyhow::bail!("invalid checksum")
         }
 
-        let v = Cbor::deserialize(body)?;
+        let v = T::import(&mut body)?;
         Ok(v)
     }
 

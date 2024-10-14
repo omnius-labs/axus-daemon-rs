@@ -191,10 +191,11 @@ mod tests {
 
     use chrono::Utc;
     use omnius_core_base::{
-        clock::{Clock, RealClockUtc},
+        clock::{Clock, ClockUtc},
         random_bytes::RandomBytesProviderImpl,
-        sleeper::{RealSleeper, Sleeper},
+        sleeper::{Sleeper, SleeperImpl},
     };
+    use parking_lot::Mutex;
     use testresult::TestResult;
     use tracing::info;
 
@@ -256,7 +257,7 @@ mod tests {
 
     async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> anyhow::Result<NodeFinder> {
         let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
-            Arc::new(ConnectionTcpAccepterImpl::new(format!("127.0.0.1:{}", port).as_str(), false).await?);
+            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
         let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
@@ -265,10 +266,10 @@ mod tests {
             .await?,
         );
 
-        let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(RealClockUtc);
-        let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(RealSleeper);
-        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519, name)?);
-        let random_bytes_provider = Arc::new(RandomBytesProviderImpl);
+        let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(ClockUtc);
+        let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(SleeperImpl);
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519_Sha3_256_Base64Url, name)?);
+        let random_bytes_provider = Arc::new(Mutex::new(RandomBytesProviderImpl::new()));
 
         let session_accepter =
             Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await);

@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use bitflags::bitflags;
 use chrono::Utc;
 use futures::FutureExt;
+use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -257,23 +257,57 @@ impl Inner {
 }
 
 bitflags! {
-    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Debug, PartialEq, Eq )]
       struct NodeFinderVersion: u32 {
         const V1 = 1;
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 struct HelloMessage {
     pub version: NodeFinderVersion,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl RocketMessage for HelloMessage {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
+        writer.write_u32(value.version.bits());
+
+        Ok(())
+    }
+
+    fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let version = NodeFinderVersion::from_bits(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid version"))?;
+
+        Ok(Self { version })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct ProfileMessage {
     pub node_profile: NodeProfile,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl RocketMessage for ProfileMessage {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
+        NodeProfile::pack(writer, &value.node_profile, depth + 1)?;
+
+        Ok(())
+    }
+
+    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let node_profile = NodeProfile::unpack(reader, depth + 1)?;
+
+        Ok(Self { node_profile })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct DataMessage {
     pub push_node_profiles: Vec<NodeProfile>,
     pub want_asset_keys: Vec<AssetKey>,
@@ -295,5 +329,105 @@ impl DataMessage {
 impl Default for DataMessage {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl RocketMessage for DataMessage {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
+        writer.write_u32(value.push_node_profiles.len().try_into()?);
+        for v in &value.push_node_profiles {
+            NodeProfile::pack(writer, v, depth + 1)?;
+        }
+
+        writer.write_u32(value.want_asset_keys.len().try_into()?);
+        for v in &value.want_asset_keys {
+            AssetKey::pack(writer, v, depth + 1)?;
+        }
+
+        writer.write_u32(value.give_asset_key_locations.len().try_into()?);
+        for (key, vs) in &value.give_asset_key_locations {
+            AssetKey::pack(writer, key, depth + 1)?;
+            writer.write_u32(vs.len().try_into()?);
+            for v in vs {
+                NodeProfile::pack(writer, v, depth + 1)?;
+            }
+        }
+
+        writer.write_u32(value.push_asset_key_locations.len().try_into()?);
+        for (key, vs) in &value.push_asset_key_locations {
+            AssetKey::pack(writer, key, depth + 1)?;
+            writer.write_u32(vs.len().try_into()?);
+            for v in vs {
+                NodeProfile::pack(writer, v, depth + 1)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        let len = reader.get_u64()?.try_into()?;
+        if len > 128 {
+            anyhow::bail!("len too large");
+        }
+        let mut push_node_profiles = Vec::with_capacity(len);
+        for _ in 0..len {
+            push_node_profiles.push(NodeProfile::unpack(reader, depth + 1)?);
+        }
+
+        let len = reader.get_u64()?.try_into()?;
+        if len > 128 {
+            anyhow::bail!("len too large");
+        }
+        let mut want_asset_keys = Vec::with_capacity(len);
+        for _ in 0..len {
+            want_asset_keys.push(AssetKey::unpack(reader, depth + 1)?);
+        }
+
+        let len = reader.get_u64()?.try_into()?;
+        if len > 128 {
+            anyhow::bail!("len too large");
+        }
+        let mut give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
+        for _ in 0..len {
+            let key = AssetKey::unpack(reader, depth + 1)?;
+            let len = reader.get_u64()?.try_into()?;
+            if len > 128 {
+                anyhow::bail!("len too large");
+            }
+            let mut vs = Vec::with_capacity(len);
+            for _ in 0..len {
+                vs.push(NodeProfile::unpack(reader, depth + 1)?);
+            }
+            give_asset_key_locations.entry(key).or_default().extend(vs);
+        }
+
+        let len = reader.get_u64()?.try_into()?;
+        if len > 128 {
+            anyhow::bail!("len too large");
+        }
+        let mut push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
+        for _ in 0..len {
+            let key = AssetKey::unpack(reader, depth + 1)?;
+            let len = reader.get_u64()?.try_into()?;
+            if len > 128 {
+                anyhow::bail!("len too large");
+            }
+            let mut vs = Vec::with_capacity(len);
+            for _ in 0..len {
+                vs.push(NodeProfile::unpack(reader, depth + 1)?);
+            }
+            push_asset_key_locations.entry(key).or_default().extend(vs);
+        }
+
+        Ok(Self {
+            push_node_profiles,
+            want_asset_keys,
+            give_asset_key_locations,
+            push_asset_key_locations,
+        })
     }
 }

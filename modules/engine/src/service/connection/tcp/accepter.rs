@@ -1,9 +1,10 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
 };
 
 use async_trait::async_trait;
+use omnius_core_omnikit::OmniAddr;
 use tokio::net::TcpListener;
 
 use crate::connection::FramedStream;
@@ -23,12 +24,13 @@ pub struct ConnectionTcpAccepterImpl {
 }
 
 impl ConnectionTcpAccepterImpl {
-    pub async fn new(addr: &str, use_upnp: bool) -> anyhow::Result<Self> {
-        if let Ok(addr) = SocketAddrV4::from_str(addr) {
-            let listener = TcpListener::bind(addr).await?;
+    pub async fn new(addr: &OmniAddr, use_upnp: bool) -> anyhow::Result<Self> {
+        let socket_addr = addr.parse_tcp_ip()?;
+        if socket_addr.is_ipv4() {
+            let listener = TcpListener::bind(socket_addr).await?;
 
-            if use_upnp && addr.ip().is_unspecified() {
-                let upnp_port_mapping = UpnpPortMapping::new(addr.port()).await;
+            if use_upnp && socket_addr.ip().is_unspecified() {
+                let upnp_port_mapping = UpnpPortMapping::new(socket_addr.port()).await;
                 if let Ok(upnp_port_mapping) = upnp_port_mapping {
                     return Ok(Self {
                         listener,
@@ -41,8 +43,8 @@ impl ConnectionTcpAccepterImpl {
                 listener,
                 upnp_port_mapping: None,
             });
-        } else if let Ok(addr) = SocketAddrV6::from_str(addr) {
-            let listener = TcpListener::bind(addr).await?;
+        } else if socket_addr.is_ipv6() {
+            let listener = TcpListener::bind(socket_addr).await?;
             return Ok(Self {
                 listener,
                 upnp_port_mapping: None,

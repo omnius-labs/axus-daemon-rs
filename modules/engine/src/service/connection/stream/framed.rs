@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use omnius_core_omnikit::connection::framed::{FramedReceiver, FramedRecv, FramedSend, FramedSender};
+use omnius_core_omnikit::connection::codec::{FramedReceiver, FramedRecv, FramedSend, FramedSender};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Mutex as TokioMutex,

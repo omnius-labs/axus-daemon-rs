@@ -17,7 +17,9 @@
     "omni",
     "omnikit",
     "omnius",
+    "Remoting",
     "reqwest",
+    "rocketpack",
     "rocksdb",
     "rowid",
     "Seedable",
@@ -26,6 +28,7 @@
     "tempfile",
     "testresult",
     "Tsid",
-    "Upnp"
+    "Upnp",
+    "Varint"
   ]
 }

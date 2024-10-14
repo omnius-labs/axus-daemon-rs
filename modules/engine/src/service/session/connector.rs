@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use omnius_core_base::random_bytes::RandomBytesProvider;
 use omnius_core_omnikit::{OmniAddr, OmniSigner};
+use parking_lot::Mutex;
 
 use crate::{
     connection::{FramedRecvExt as _, FramedSendExt as _},
@@ -19,14 +20,14 @@ use super::{
 pub struct SessionConnector {
     tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
     signer: Arc<OmniSigner>,
-    random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+    random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
 }
 
 impl SessionConnector {
     pub fn new(
         tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
         signer: Arc<OmniSigner>,
-        random_bytes_provider: Arc<dyn RandomBytesProvider + Send + Sync>,
+        random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
     ) -> Self {
         Self {
             tcp_connector,
@@ -35,8 +36,8 @@ impl SessionConnector {
         }
     }
 
-    pub async fn connect(&self, address: &OmniAddr, typ: &SessionType) -> anyhow::Result<Session> {
-        let stream = self.tcp_connector.connect(address.parse_tcp()?.as_str()).await?;
+    pub async fn connect(&self, addr: &OmniAddr, typ: &SessionType) -> anyhow::Result<Session> {
+        let stream = self.tcp_connector.connect(addr).await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
         stream.sender.lock().await.send_message(&send_hello_message).await?;
@@ -47,6 +48,7 @@ impl SessionConnector {
         if version.contains(SessionVersion::V1) {
             let send_nonce: [u8; 32] = self
                 .random_bytes_provider
+                .lock()
                 .get_bytes(32)
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
@@ -77,7 +79,7 @@ impl SessionConnector {
 
             let session = Session {
                 typ: typ.clone(),
-                address: address.clone(),
+                address: addr.clone(),
                 handshake_type: SessionHandshakeType::Connected,
                 cert: received_signature_message.cert,
                 stream,
