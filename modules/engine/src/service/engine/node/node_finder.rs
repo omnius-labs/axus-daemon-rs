@@ -223,11 +223,11 @@ mod tests {
 
         let np1 = NodeProfile {
             id: "1".as_bytes().to_vec(),
-            addrs: vec![OmniAddr::new("tcp(127.0.0.1:60001)")],
+            addrs: vec![OmniAddr::new("tcp(ip4(127.0.0.1),60001)")],
         };
         let np2 = NodeProfile {
             id: "2".as_bytes().to_vec(),
-            addrs: vec![OmniAddr::new("tcp(127.0.0.1:60002)")],
+            addrs: vec![OmniAddr::new("tcp(ip4(127.0.0.1),60002)")],
         };
 
         let nf1_path = dir.path().join("1");

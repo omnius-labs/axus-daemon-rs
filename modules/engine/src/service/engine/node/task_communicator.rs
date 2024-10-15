@@ -369,7 +369,7 @@ impl RocketMessage for DataMessage {
     where
         Self: Sized,
     {
-        let len = reader.get_u64()?.try_into()?;
+        let len = reader.get_u32()?.try_into()?;
         if len > 128 {
             anyhow::bail!("len too large");
         }
@@ -378,7 +378,7 @@ impl RocketMessage for DataMessage {
             push_node_profiles.push(NodeProfile::unpack(reader, depth + 1)?);
         }
 
-        let len = reader.get_u64()?.try_into()?;
+        let len = reader.get_u32()?.try_into()?;
         if len > 128 {
             anyhow::bail!("len too large");
         }
@@ -387,14 +387,14 @@ impl RocketMessage for DataMessage {
             want_asset_keys.push(AssetKey::unpack(reader, depth + 1)?);
         }
 
-        let len = reader.get_u64()?.try_into()?;
+        let len = reader.get_u32()?.try_into()?;
         if len > 128 {
             anyhow::bail!("len too large");
         }
         let mut give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
-            let len = reader.get_u64()?.try_into()?;
+            let len = reader.get_u32()?.try_into()?;
             if len > 128 {
                 anyhow::bail!("len too large");
             }
@@ -405,14 +405,14 @@ impl RocketMessage for DataMessage {
             give_asset_key_locations.entry(key).or_default().extend(vs);
         }
 
-        let len = reader.get_u64()?.try_into()?;
+        let len = reader.get_u32()?.try_into()?;
         if len > 128 {
             anyhow::bail!("len too large");
         }
         let mut push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
-            let len = reader.get_u64()?.try_into()?;
+            let len = reader.get_u32()?.try_into()?;
             if len > 128 {
                 anyhow::bail!("len too large");
             }
