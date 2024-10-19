@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use omnius_core_omnikit::OmniAddr;
 use tokio::net::TcpListener;
 
-use crate::connection::FramedStream;
+use crate::service::connection::FramedStream;
 
 use super::UpnpClient;
 

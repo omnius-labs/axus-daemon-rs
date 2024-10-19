@@ -9,6 +9,8 @@ use omnius_core_omnikit::OmniHash;
 
 use crate::service::util::{MigrationRequest, SqliteMigrator};
 
+use super::PublishedFile;
+
 #[allow(unused)]
 pub struct FilePublisherRepo {
     db: Arc<SqlitePool>,
@@ -45,8 +47,8 @@ CREATE TABLE IF NOT EXISTS files (
     file_name TEXT NOT NULL,
     block_size INTEGER NOT NULL,
     property TEXT,
-    created_time TIMESTAMP NOT NULL,
-    updated_time TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (root_hash, file_path)
 );
 CREATE TABLE IF NOT EXISTS blocks (
@@ -85,7 +87,7 @@ SELECT COUNT(1)
     pub async fn get_published_files(&self) -> anyhow::Result<Vec<PublishedFile>> {
         let res: Vec<PublishedFileRow> = sqlx::query_as(
             r#"
-SELECT root_hash, file_name, block_size, property, created_time, updated_time
+SELECT root_hash, file_name, block_size, property, created_at, updated_at
     FROM files
 "#,
         )
@@ -114,23 +116,14 @@ SELECT COUNT(1)
     }
 }
 
-pub struct PublishedFile {
-    pub root_hash: OmniHash,
-    pub file_name: String,
-    pub block_size: i64,
-    pub property: Option<String>,
-    pub created_time: DateTime<Utc>,
-    pub updated_time: DateTime<Utc>,
-}
-
 #[derive(sqlx::FromRow)]
 struct PublishedFileRow {
     root_hash: String,
     file_name: String,
     block_size: i64,
     property: Option<String>,
-    created_time: NaiveDateTime,
-    updated_time: NaiveDateTime,
+    created_at: NaiveDateTime,
+    updated_at: NaiveDateTime,
 }
 
 impl PublishedFileRow {
@@ -140,8 +133,8 @@ impl PublishedFileRow {
             file_name: self.file_name,
             block_size: self.block_size,
             property: self.property,
-            created_time: DateTime::from_naive_utc_and_offset(self.created_time, Utc),
-            updated_time: DateTime::from_naive_utc_and_offset(self.updated_time, Utc),
+            created_at: DateTime::from_naive_utc_and_offset(self.created_at, Utc),
+            updated_at: DateTime::from_naive_utc_and_offset(self.updated_at, Utc),
         })
     }
 
@@ -152,8 +145,8 @@ impl PublishedFileRow {
             file_name: item.file_name,
             block_size: item.block_size,
             property: item.property,
-            created_time: item.created_time.naive_utc(),
-            updated_time: item.updated_time.naive_utc(),
+            created_at: item.created_at.naive_utc(),
+            updated_at: item.updated_at.naive_utc(),
         })
     }
 }

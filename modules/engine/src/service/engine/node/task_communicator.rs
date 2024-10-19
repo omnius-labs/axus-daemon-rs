@@ -16,9 +16,12 @@ use tracing::{info, warn};
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
-    connection::{FramedRecvExt as _, FramedSendExt as _},
     model::{AssetKey, NodeProfile},
-    service::{session::model::Session, util::WaitGroup},
+    service::{
+        connection::{FramedRecvExt as _, FramedSendExt as _},
+        session::model::Session,
+        util::WaitGroup,
+    },
 };
 
 use super::{HandshakeType, NodeProfileRepo, SessionStatus};

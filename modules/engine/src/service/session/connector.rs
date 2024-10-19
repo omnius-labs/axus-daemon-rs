@@ -4,12 +4,9 @@ use omnius_core_base::random_bytes::RandomBytesProvider;
 use omnius_core_omnikit::{OmniAddr, OmniSigner};
 use parking_lot::Mutex;
 
-use crate::{
-    connection::{FramedRecvExt as _, FramedSendExt as _},
-    service::{
-        connection::ConnectionTcpConnector,
-        session::message::{V1ChallengeMessage, V1SignatureMessage},
-    },
+use crate::service::{
+    connection::{ConnectionTcpConnector, FramedRecvExt as _, FramedSendExt as _},
+    session::message::{V1ChallengeMessage, V1SignatureMessage},
 };
 
 use super::{

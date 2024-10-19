@@ -16,14 +16,12 @@ mod tests {
     use parking_lot::Mutex;
     use testresult::TestResult;
 
-    use crate::{
-        connection::{FramedRecvExt as _, FramedSendExt as _},
-        service::{
-            connection::{
-                ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
-            },
-            session::{model::SessionType, SessionAccepter, SessionConnector},
+    use crate::service::{
+        connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _,
+            FramedSendExt as _, TcpProxyOption, TcpProxyType,
         },
+        session::{model::SessionType, SessionAccepter, SessionConnector},
     };
 
     #[tokio::test]

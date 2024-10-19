@@ -12,11 +12,9 @@ mod tests {
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
     use testresult::TestResult;
 
-    use crate::{
-        connection::{FramedRecvExt as _, FramedSendExt as _},
-        service::connection::{
-            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
-        },
+    use crate::service::connection::{
+        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _,
+        TcpProxyOption, TcpProxyType,
     };
 
     #[tokio::test]
