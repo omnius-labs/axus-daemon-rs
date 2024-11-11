@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+use omnius_core_omnikit::OmniHash;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     sync::Mutex as TokioMutex,
@@ -22,7 +23,7 @@ pub struct FilePublisher {
 
 #[allow(unused)]
 impl FilePublisher {
-    pub async fn publish_file<R>(self, reader: &mut R, file_name: &str, block_size: u64) -> anyhow::Result<Self>
+    pub async fn publish_file<R>(&self, reader: &mut R, file_name: &str, block_size: u64) -> anyhow::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
@@ -37,5 +38,9 @@ impl FilePublisher {
         todo!()
     }
 
-    // pub fn gen_key_by_tmp
+    async fn write_uncommitted_block(id: &str) {}
+
+    fn gen_uncommitted_block_path(id: &str, block_hash: &OmniHash) -> String {
+        format!("U/{}/{}", id, block_hash)
+    }
 }

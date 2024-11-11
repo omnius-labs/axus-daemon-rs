@@ -7,7 +7,7 @@ use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
 
-use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable as _};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -28,7 +28,7 @@ pub struct NodeFinder {
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
-    option: NodeFinderOptions,
+    option: NodeFinderOption,
 
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
@@ -44,7 +44,7 @@ pub struct NodeFinder {
 }
 
 #[derive(Debug, Clone)]
-pub struct NodeFinderOptions {
+pub struct NodeFinderOption {
     pub state_dir_path: String,
     pub max_connected_session_count: usize,
     pub max_accepted_session_count: usize,
@@ -58,7 +58,7 @@ impl NodeFinder {
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
-        option: NodeFinderOptions,
+        option: NodeFinderOption,
     ) -> Self {
         let (tx, rx) = mpsc::channel(20);
 
@@ -170,14 +170,14 @@ impl NodeFinder {
         {
             let mut task_computer = self.task_computer.lock().await;
             if let Some(task_computer) = task_computer.take() {
-                task_computer.terminate().await;
+                task_computer.terminate().await?;
             }
         }
 
         {
             let mut task_communicator = self.task_communicator.lock().await;
             if let Some(task_communicator) = task_communicator.take() {
-                task_communicator.terminate().await;
+                task_communicator.terminate().await?;
             }
         }
 
@@ -212,7 +212,7 @@ mod tests {
         },
     };
 
-    use super::NodeFinderOptions;
+    use super::NodeFinderOption;
 
     #[tokio::test]
     #[ignore]
@@ -294,7 +294,7 @@ mod tests {
             node_profile_fetcher,
             clock,
             sleeper,
-            NodeFinderOptions {
+            NodeFinderOption {
                 state_dir_path: node_finder_dir.as_os_str().to_str().unwrap().to_string(),
                 max_connected_session_count: 3,
                 max_accepted_session_count: 3,

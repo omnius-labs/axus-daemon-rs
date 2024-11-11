@@ -1,5 +1,7 @@
 // https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
 
+use std::path::Path;
+
 #[allow(dead_code)]
 pub struct BlobStorage {
     rocksdb: rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>,
@@ -7,7 +9,7 @@ pub struct BlobStorage {
 
 #[allow(dead_code)]
 impl BlobStorage {
-    pub fn new(path: &str) -> anyhow::Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let mut opts = rocksdb::Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
@@ -45,7 +47,7 @@ impl BlobStorage {
         Ok(())
     }
 
-    pub fn destroy(path: &str) -> anyhow::Result<()> {
+    pub fn destroy<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
         let opts = rocksdb::Options::default();
         rocksdb::DB::destroy(&opts, path)?;
         Ok(())

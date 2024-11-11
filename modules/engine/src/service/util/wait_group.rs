@@ -15,14 +15,8 @@ impl WaitGroup {
         }
     }
 
-    pub fn add(&self, count: usize) {
-        self.counter.fetch_add(count, Ordering::SeqCst);
-    }
-
-    pub async fn done(&self) {
-        if self.counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.notify.notify_one();
-        }
+    pub fn worker(&self) -> WaitGroupWorker {
+        WaitGroupWorker::new(self.counter.clone(), self.notify.clone())
     }
 
     pub async fn wait(&self) {
@@ -38,6 +32,26 @@ impl Default for WaitGroup {
     }
 }
 
+pub struct WaitGroupWorker {
+    counter: Arc<AtomicUsize>,
+    notify: Arc<Notify>,
+}
+
+impl WaitGroupWorker {
+    fn new(counter: Arc<AtomicUsize>, notify: Arc<Notify>) -> Self {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Self { counter, notify }
+    }
+}
+
+impl Drop for WaitGroupWorker {
+    fn drop(&mut self) {
+        if self.counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.notify.notify_one();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,15 +59,14 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_wait_group() {
-        let wg = Arc::new(WaitGroup::new());
+        let wg = WaitGroup::new();
         let mut handles = Vec::new();
 
         for _ in 0..10 {
-            let wg_clone = wg.clone();
-            wg.add(1);
+            let w = wg.worker();
             let handle = tokio::spawn(async move {
                 // ここで何かの処理を行う
-                wg_clone.done().await;
+                drop(w);
             });
             handles.push(handle);
         }

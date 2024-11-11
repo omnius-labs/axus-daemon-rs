@@ -10,11 +10,12 @@ pub use connector::*;
 mod tests {
     use std::sync::Arc;
 
-    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
-    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
-    use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
     use parking_lot::Mutex;
     use testresult::TestResult;
+
+    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper, terminable::Terminable as _};
+    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
+    use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
     use crate::service::{
         connection::{

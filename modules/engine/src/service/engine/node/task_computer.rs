@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use async_trait::async_trait;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use rand::seq::SliceRandom as _;
@@ -12,7 +13,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::sleeper::Sleeper;
+use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -26,6 +27,18 @@ pub struct TaskComputer {
     inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+}
+
+#[async_trait]
+impl Terminable for TaskComputer {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+
+        Ok(())
+    }
 }
 
 impl TaskComputer {
@@ -69,13 +82,6 @@ impl TaskComputer {
             }
         });
         *self.join_handle.lock().await = Some(join_handle);
-    }
-
-    pub async fn terminate(&self) {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
     }
 }
 

@@ -14,7 +14,7 @@ use crate::service::session::{
     SessionAccepter,
 };
 
-use super::{HandshakeType, NodeFinderOptions, SessionStatus};
+use super::{HandshakeType, NodeFinderOption, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskAccepter {
@@ -28,7 +28,7 @@ impl TaskAccepter {
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_accepter: Arc<SessionAccepter>,
-        option: NodeFinderOptions,
+        option: NodeFinderOption,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
         let inner = Inner {
@@ -73,7 +73,7 @@ struct Inner {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_accepter: Arc<SessionAccepter>,
-    option: NodeFinderOptions,
+    option: NodeFinderOption,
 }
 
 #[allow(dead_code)]

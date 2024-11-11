@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use bitflags::bitflags;
 use chrono::Utc;
 use futures::FutureExt;
@@ -13,7 +14,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -33,6 +34,20 @@ pub struct TaskCommunicator {
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
     wait_group: Arc<WaitGroup>,
     cancellation_token: CancellationToken,
+}
+
+#[async_trait]
+impl Terminable for TaskCommunicator {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        self.cancellation_token.cancel();
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+        self.wait_group.wait().await;
+
+        Ok(())
+    }
 }
 
 impl TaskCommunicator {
@@ -79,15 +94,6 @@ impl TaskCommunicator {
         });
         *self.join_handle.lock().await = Some(join_handle);
     }
-
-    pub async fn terminate(&self) {
-        self.cancellation_token.cancel();
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
-        self.wait_group.wait().await;
-    }
 }
 
 #[derive(Clone)]
@@ -104,7 +110,7 @@ struct Inner {
 
 impl Inner {
     pub fn communicate(self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
-        self.wait_group.add(1);
+        let w = self.wait_group.worker();
         tokio::spawn(async move {
             select! {
                 _ = self.cancellation_token.cancelled() => {}
@@ -115,7 +121,7 @@ impl Inner {
                     }
                 } => {}
             }
-            self.wait_group.done().await;
+            drop(w);
         });
         Ok(())
     }
@@ -140,6 +146,11 @@ impl Inner {
         let receive = self.receive(&status);
 
         let _ = tokio::join!(send, receive);
+
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.remove(&status.node_profile.id);
+        }
 
         Ok(())
     }

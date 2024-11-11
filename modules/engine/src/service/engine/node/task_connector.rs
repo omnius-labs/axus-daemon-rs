@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use rand::{seq::SliceRandom, SeedableRng};
@@ -10,7 +11,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::sleeper::Sleeper;
+use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::NodeProfile,
@@ -23,13 +24,25 @@ use crate::{
     },
 };
 
-use super::{HandshakeType, NodeFinderOptions, NodeProfileRepo, SessionStatus};
+use super::{HandshakeType, NodeFinderOption, NodeProfileRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskConnector {
     inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+}
+
+#[async_trait]
+impl Terminable for TaskConnector {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+
+        Ok(())
+    }
 }
 
 impl TaskConnector {
@@ -40,7 +53,7 @@ impl TaskConnector {
         connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
-        option: NodeFinderOptions,
+        option: NodeFinderOption,
     ) -> Self {
         let inner = Inner {
             sessions,
@@ -71,13 +84,6 @@ impl TaskConnector {
         });
         *self.join_handle.lock().await = Some(join_handle);
     }
-
-    pub async fn terminate(&self) {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -87,7 +93,7 @@ struct Inner {
     session_connector: Arc<SessionConnector>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
-    option: NodeFinderOptions,
+    option: NodeFinderOption,
 }
 
 impl Inner {

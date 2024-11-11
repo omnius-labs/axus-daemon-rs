@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use futures::{future::join_all, FutureExt};
 use parking_lot::Mutex;
 use tokio::{
@@ -8,7 +9,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
+use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable};
 use omnius_core_omnikit::{OmniAddr, OmniSigner};
 
 use crate::service::{
@@ -29,6 +30,17 @@ pub struct SessionAccepter {
     receivers: Arc<TokioMutex<HashMap<SessionType, mpsc::Receiver<Session>>>>,
     senders: Arc<TokioMutex<HashMap<SessionType, mpsc::Sender<Session>>>>,
     task_acceptors: Arc<TokioMutex<Vec<TaskAccepter>>>,
+}
+
+#[async_trait]
+impl Terminable for SessionAccepter {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        let mut task_acceptors = self.task_acceptors.lock().await;
+        let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
+        join_all(task_acceptors.iter().map(|task| task.terminate())).await;
+
+        Ok(())
+    }
 }
 
 impl SessionAccepter {
@@ -75,14 +87,6 @@ impl SessionAccepter {
         }
     }
 
-    pub async fn terminate(&self) -> anyhow::Result<()> {
-        let mut task_acceptors = self.task_acceptors.lock().await;
-        let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
-        join_all(task_acceptors.iter().map(|task| task.terminate())).await;
-
-        Ok(())
-    }
-
     pub async fn accept(&self, typ: &SessionType) -> anyhow::Result<Session> {
         let mut receivers = self.receivers.lock().await;
         let receiver = receivers.get_mut(typ).unwrap();
@@ -96,6 +100,18 @@ struct TaskAccepter {
     inner: Inner,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+}
+
+#[async_trait]
+impl Terminable for TaskAccepter {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+
+        Ok(())
+    }
 }
 
 impl TaskAccepter {
@@ -116,13 +132,6 @@ impl TaskAccepter {
             inner,
             sleeper,
             join_handle: Arc::new(TokioMutex::new(None)),
-        }
-    }
-
-    pub async fn terminate(&self) {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
         }
     }
 
