@@ -199,7 +199,7 @@ mod tests {
     use testresult::TestResult;
     use tracing::info;
 
-    use omnius_core_omnikit::{OmniAddr, OmniSignType, OmniSigner};
+    use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
     use crate::{
         model::NodeProfile,

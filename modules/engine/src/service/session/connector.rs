@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use omnius_core_base::random_bytes::RandomBytesProvider;
-use omnius_core_omnikit::{OmniAddr, OmniSigner};
+use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 use parking_lot::Mutex;
 
 use crate::service::{

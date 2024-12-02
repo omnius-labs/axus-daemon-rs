@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use omnius_core_omnikit::connection::codec::{FramedRecv, FramedSend};
+use omnius_core_omnikit::service::connection::codec::{FramedRecv, FramedSend};
 use omnius_core_rocketpack::RocketMessage;
 
 #[async_trait]

@@ -1,11 +1,10 @@
-use std::str::FromStr;
-use std::{path::Path, sync::Arc};
+use std::{path::Path, str::FromStr as _, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, Sqlite};
 
 use omnius_core_base::clock::Clock;
-use omnius_core_omnikit::OmniHash;
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::service::util::{MigrationRequest, SqliteMigrator};
 

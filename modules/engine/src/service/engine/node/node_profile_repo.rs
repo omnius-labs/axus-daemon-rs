@@ -130,7 +130,7 @@ mod tests {
     use testresult::TestResult;
 
     use omnius_core_base::clock::FakeClockUtc;
-    use omnius_core_omnikit::OmniAddr;
+    use omnius_core_omnikit::model::OmniAddr;
 
     use crate::model::NodeProfile;
 

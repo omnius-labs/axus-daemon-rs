@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use omnius_core_omnikit::OmniCert;
+use omnius_core_omnikit::model::OmniCert;
 use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
 bitflags! {

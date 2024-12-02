@@ -8,7 +8,7 @@ pub use upnp_client::*;
 
 #[cfg(test)]
 mod tests {
-    use omnius_core_omnikit::OmniAddr;
+    use omnius_core_omnikit::model::OmniAddr;
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
     use testresult::TestResult;
 

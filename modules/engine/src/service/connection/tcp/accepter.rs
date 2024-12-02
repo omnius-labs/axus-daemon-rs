@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use omnius_core_omnikit::OmniAddr;
+use omnius_core_omnikit::model::OmniAddr;
 use tokio::net::TcpListener;
 
 use crate::service::connection::FramedStream;

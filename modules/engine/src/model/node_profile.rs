@@ -1,6 +1,6 @@
 use std::fmt;
 
-use omnius_core_omnikit::OmniAddr;
+use omnius_core_omnikit::model::OmniAddr;
 use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

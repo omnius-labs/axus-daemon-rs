@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use parking_lot::Mutex;
 
 use omnius_core_base::clock::Clock;
-use omnius_core_omnikit::OmniHash;
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::service::{session::model::Session, util::VolatileHashSet};
 

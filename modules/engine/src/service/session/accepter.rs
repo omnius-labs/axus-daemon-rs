@@ -10,7 +10,7 @@ use tokio::{
 use tracing::warn;
 
 use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable};
-use omnius_core_omnikit::{OmniAddr, OmniSigner};
+use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
 use crate::service::{
     connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},

@@ -1,4 +1,4 @@
-use omnius_core_omnikit::OmniHash;
+use omnius_core_omnikit::model::OmniHash;
 
 pub struct PublishedBlock {
     pub root_hash: OmniHash,

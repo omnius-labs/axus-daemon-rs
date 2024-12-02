@@ -2,8 +2,9 @@ use crate::model::NodeProfile;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64, Engine};
 use crc::{Crc, CRC_32_ISCSI};
-use omnius_core_rocketpack::RocketMessage;
 use tokio_util::bytes::Bytes;
+
+use omnius_core_rocketpack::RocketMessage;
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -81,7 +82,7 @@ impl UriConverter {
 
 #[cfg(test)]
 mod tests {
-    use omnius_core_omnikit::OmniAddr;
+    use omnius_core_omnikit::model::OmniAddr;
 
     use crate::{model::NodeProfile, service::util::UriConverter};
 

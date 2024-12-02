@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use omnius_core_base::{clock::Clock, sleeper::Sleeper};
-use omnius_core_omnikit::OmniHash;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     sync::Mutex as TokioMutex,
 };
+
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::service::storage::BlobStorage;
 

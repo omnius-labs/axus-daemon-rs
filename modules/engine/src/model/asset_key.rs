@@ -1,4 +1,4 @@
-use omnius_core_omnikit::OmniHash;
+use omnius_core_omnikit::model::OmniHash;
 use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
