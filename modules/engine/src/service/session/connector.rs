@@ -10,7 +10,10 @@ use crate::service::{
 };
 
 use super::{
-    message::{HelloMessage, SessionVersion, V1RequestMessage, V1RequestType, V1ResultMessage, V1ResultType},
+    message::{
+        HelloMessage, SessionVersion, V1RequestMessage, V1RequestType, V1ResultMessage,
+        V1ResultType,
+    },
     model::{Session, SessionHandshakeType, SessionType},
 };
 
@@ -36,9 +39,17 @@ impl SessionConnector {
     pub async fn connect(&self, addr: &OmniAddr, typ: &SessionType) -> anyhow::Result<Session> {
         let stream = self.tcp_connector.connect(addr).await?;
 
-        let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.sender.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.receiver.lock().await.recv_message().await?;
+        let send_hello_message = HelloMessage {
+            version: SessionVersion::V1,
+        };
+        stream
+            .sender
+            .lock()
+            .await
+            .send_message(&send_hello_message)
+            .await?;
+        let received_hello_message: HelloMessage =
+            stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -50,15 +61,33 @@ impl SessionConnector {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.sender.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
+            stream
+                .sender
+                .lock()
+                .await
+                .send_message(&send_challenge_message)
+                .await?;
+            let receive_challenge_message: V1ChallengeMessage =
+                stream.receiver.lock().await.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
-            let send_signature_message = V1SignatureMessage { cert: send_signature };
-            stream.sender.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
+            let send_signature_message = V1SignatureMessage {
+                cert: send_signature,
+            };
+            stream
+                .sender
+                .lock()
+                .await
+                .send_message(&send_signature_message)
+                .await?;
+            let received_signature_message: V1SignatureMessage =
+                stream.receiver.lock().await.recv_message().await?;
 
-            if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
+            if received_signature_message
+                .cert
+                .verify(send_nonce.as_slice())
+                .is_err()
+            {
                 anyhow::bail!("Invalid signature")
             }
 
@@ -67,8 +96,14 @@ impl SessionConnector {
                     SessionType::NodeFinder => V1RequestType::NodeExchanger,
                 },
             };
-            stream.sender.lock().await.send_message(&send_session_request_message).await?;
-            let received_session_result_message: V1ResultMessage = stream.receiver.lock().await.recv_message().await?;
+            stream
+                .sender
+                .lock()
+                .await
+                .send_message(&send_session_request_message)
+                .await?;
+            let received_session_result_message: V1ResultMessage =
+                stream.receiver.lock().await.recv_message().await?;
 
             if received_session_result_message.result_type == V1ResultType::Reject {
                 anyhow::bail!("Session rejected")

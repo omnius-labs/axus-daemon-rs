@@ -18,7 +18,10 @@ impl SqliteMigrator {
         let histories = self.fetch_migration_histories().await?;
         let ignore_set: HashSet<String> = histories.iter().map(|n| n.name.clone()).collect();
 
-        let requests: Vec<MigrationRequest> = requests.into_iter().filter(|x| !ignore_set.contains(x.name.as_str())).collect();
+        let requests: Vec<MigrationRequest> = requests
+            .into_iter()
+            .filter(|x| !ignore_set.contains(x.name.as_str()))
+            .collect();
 
         if requests.is_empty() {
             return Ok(());
@@ -58,7 +61,10 @@ SELECT name, executed_at FROM _migrations
         Ok(res)
     }
 
-    async fn execute_migration_queries(&self, requests: Vec<MigrationRequest>) -> anyhow::Result<()> {
+    async fn execute_migration_queries(
+        &self,
+        requests: Vec<MigrationRequest>,
+    ) -> anyhow::Result<()> {
         for r in requests {
             for query in r.queries.split(';') {
                 if query.trim().is_empty() {
@@ -67,7 +73,8 @@ SELECT name, executed_at FROM _migrations
                 sqlx::query(query).execute(self.db.as_ref()).await?;
             }
 
-            self.insert_migration_history(r.name.as_str(), r.queries.as_str()).await?;
+            self.insert_migration_history(r.name.as_str(), r.queries.as_str())
+                .await?;
         }
 
         Ok(())

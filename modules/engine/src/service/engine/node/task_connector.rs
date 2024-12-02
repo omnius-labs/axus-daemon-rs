@@ -113,7 +113,9 @@ impl Inner {
 
         let mut rng = ChaCha20Rng::from_entropy();
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
-        let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
+        let node_profile = node_profiles
+            .choose(&mut rng)
+            .ok_or(anyhow::anyhow!("Not found node_profile"))?;
 
         if self
             .sessions
@@ -130,9 +132,19 @@ impl Inner {
         }
 
         for addr in node_profile.addrs.iter() {
-            if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
-                self.session_sender.lock().await.send((HandshakeType::Connected, session)).await?;
-                self.connected_node_profiles.lock().insert(node_profile.clone());
+            if let Ok(session) = self
+                .session_connector
+                .connect(addr, &SessionType::NodeFinder)
+                .await
+            {
+                self.session_sender
+                    .lock()
+                    .await
+                    .send((HandshakeType::Connected, session))
+                    .await?;
+                self.connected_node_profiles
+                    .lock()
+                    .insert(node_profile.clone());
             }
         }
 

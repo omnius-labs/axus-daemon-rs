@@ -28,7 +28,8 @@ impl RocketMessage for HelloMessage {
     where
         Self: Sized,
     {
-        let version = SessionVersion::from_bits(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid version"))?;
+        let version = SessionVersion::from_bits(reader.get_u32()?)
+            .ok_or_else(|| anyhow::anyhow!("invalid version"))?;
 
         Ok(Self { version })
     }
@@ -50,7 +51,11 @@ impl RocketMessage for V1ChallengeMessage {
     where
         Self: Sized,
     {
-        let nonce: [u8; 32] = reader.get_bytes(32)?.to_vec().try_into().map_err(|_| anyhow::anyhow!("Invalid nonce"))?;
+        let nonce: [u8; 32] = reader
+            .get_bytes(32)?
+            .to_vec()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Invalid nonce"))?;
 
         Ok(Self { nonce })
     }
@@ -91,7 +96,12 @@ pub struct V1RequestMessage {
 
 impl RocketMessage for V1RequestMessage {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
-        writer.write_u32(value.request_type.to_u32().ok_or_else(|| anyhow::anyhow!("invalid request_type"))?);
+        writer.write_u32(
+            value
+                .request_type
+                .to_u32()
+                .ok_or_else(|| anyhow::anyhow!("invalid request_type"))?,
+        );
 
         Ok(())
     }
@@ -100,7 +110,8 @@ impl RocketMessage for V1RequestMessage {
     where
         Self: Sized,
     {
-        let request_type: V1RequestType = FromPrimitive::from_u32(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid request_type"))?;
+        let request_type: V1RequestType = FromPrimitive::from_u32(reader.get_u32()?)
+            .ok_or_else(|| anyhow::anyhow!("invalid request_type"))?;
 
         Ok(Self { request_type })
     }
@@ -120,7 +131,12 @@ pub struct V1ResultMessage {
 
 impl RocketMessage for V1ResultMessage {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
-        writer.write_u32(value.result_type.to_u32().ok_or_else(|| anyhow::anyhow!("invalid result_type"))?);
+        writer.write_u32(
+            value
+                .result_type
+                .to_u32()
+                .ok_or_else(|| anyhow::anyhow!("invalid result_type"))?,
+        );
 
         Ok(())
     }
@@ -129,7 +145,8 @@ impl RocketMessage for V1ResultMessage {
     where
         Self: Sized,
     {
-        let result_type: V1ResultType = FromPrimitive::from_u32(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid result_type"))?;
+        let result_type: V1ResultType = FromPrimitive::from_u32(reader.get_u32()?)
+            .ok_or_else(|| anyhow::anyhow!("invalid result_type"))?;
 
         Ok(Self { result_type })
     }

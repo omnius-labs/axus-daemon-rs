@@ -13,14 +13,17 @@ mod tests {
     use parking_lot::Mutex;
     use testresult::TestResult;
 
-    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper, terminable::Terminable as _};
+    use omnius_core_base::{
+        random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper, terminable::Terminable as _,
+    };
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
     use crate::service::{
         connection::{
-            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _,
-            FramedSendExt as _, TcpProxyOption, TcpProxyType,
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
+            ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption,
+            TcpProxyType,
         },
         session::{model::SessionType, SessionAccepter, SessionConnector},
     };
@@ -28,8 +31,13 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_test() -> TestResult {
-        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
-            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, 60000), false).await?);
+        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> = Arc::new(
+            ConnectionTcpAccepterImpl::new(
+                &OmniAddr::create_tcp("127.0.0.1".parse()?, 60000),
+                false,
+            )
+            .await?,
+        );
         let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
@@ -38,16 +46,28 @@ mod tests {
             .await?,
         );
 
-        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519_Sha3_256_Base64Url, "test")?);
+        let signer = Arc::new(OmniSigner::new(
+            OmniSignType::Ed25519_Sha3_256_Base64Url,
+            "test",
+        )?);
         let random_bytes_provider = Arc::new(Mutex::new(RandomBytesProviderImpl::new()));
         let sleeper = Arc::new(FakeSleeper);
 
-        let session_accepter = SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await;
+        let session_accepter = SessionAccepter::new(
+            tcp_accepter.clone(),
+            signer.clone(),
+            random_bytes_provider.clone(),
+            sleeper.clone(),
+        )
+        .await;
         let session_connector = SessionConnector::new(tcp_connector, signer, random_bytes_provider);
 
         let client = Arc::new(
             session_connector
-                .connect(&OmniAddr::create_tcp("127.0.0.1".parse()?, 60000), &SessionType::NodeFinder)
+                .connect(
+                    &OmniAddr::create_tcp("127.0.0.1".parse()?, 60000),
+                    &SessionType::NodeFinder,
+                )
                 .await?,
         );
         let server = Arc::new(session_accepter.accept(&SessionType::NodeFinder).await?);

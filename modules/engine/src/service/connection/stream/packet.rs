@@ -21,7 +21,10 @@ where
 
 #[async_trait]
 pub trait FramedSendExt: FramedSend {
-    async fn send_message<T: RocketMessage + Send + Sync>(&mut self, item: &T) -> anyhow::Result<()>;
+    async fn send_message<T: RocketMessage + Send + Sync>(
+        &mut self,
+        item: &T,
+    ) -> anyhow::Result<()>;
 }
 
 #[async_trait]
@@ -29,7 +32,10 @@ impl<T: FramedSend> FramedSendExt for T
 where
     T: ?Sized + Send + Unpin,
 {
-    async fn send_message<TItem: RocketMessage + Send + Sync>(&mut self, item: &TItem) -> anyhow::Result<()> {
+    async fn send_message<TItem: RocketMessage + Send + Sync>(
+        &mut self,
+        item: &TItem,
+    ) -> anyhow::Result<()> {
         let b = item.export()?;
         self.send(b).await?;
         Ok(())

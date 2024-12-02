@@ -55,11 +55,17 @@ impl BlobStorage {
 }
 
 pub struct BlobStorageKeyIterator<'a> {
-    iter: rocksdb::DBRawIteratorWithThreadMode<'a, rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>>,
+    iter:
+        rocksdb::DBRawIteratorWithThreadMode<'a, rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>>,
 }
 
 impl<'a> BlobStorageKeyIterator<'a> {
-    fn new(iter: rocksdb::DBRawIteratorWithThreadMode<'a, rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>>) -> Self {
+    fn new(
+        iter: rocksdb::DBRawIteratorWithThreadMode<
+            'a,
+            rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>,
+        >,
+    ) -> Self {
         Self { iter }
     }
 }
@@ -99,7 +105,14 @@ mod tests {
         assert_ne!(storage.get(key1.as_ref()).unwrap().unwrap(), value2);
         assert!(storage.get(key2.as_ref()).unwrap().is_none());
         storage.flush().unwrap();
-        assert_eq!(storage.keys().unwrap().map(|n| n.to_vec()).collect::<Vec<_>>(), vec![key1.clone()]);
+        assert_eq!(
+            storage
+                .keys()
+                .unwrap()
+                .map(|n| n.to_vec())
+                .collect::<Vec<_>>(),
+            vec![key1.clone()]
+        );
         assert!(storage.delete(key1.as_ref()).is_ok());
         assert_eq!(storage.keys().unwrap().count(), 0);
         assert!(storage.get(key1.as_ref()).unwrap().is_none());

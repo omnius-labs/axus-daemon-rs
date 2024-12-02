@@ -60,8 +60,15 @@ where
 
     pub fn extend(&mut self, iter: impl IntoIterator<Item = (K, V)>) {
         let now = self.clock.now();
-        self.map
-            .extend(iter.into_iter().map(|(k, v)| (k, ValueEntry { value: v, created_time: now })));
+        self.map.extend(iter.into_iter().map(|(k, v)| {
+            (
+                k,
+                ValueEntry {
+                    value: v,
+                    created_time: now,
+                },
+            )
+        }));
     }
 
     pub fn contains_key(&self, key: &K) -> bool {

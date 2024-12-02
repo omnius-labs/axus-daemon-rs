@@ -24,7 +24,12 @@ pub struct FilePublisher {
 
 #[allow(unused)]
 impl FilePublisher {
-    pub async fn publish_file<R>(&self, reader: &mut R, file_name: &str, block_size: u64) -> anyhow::Result<Self>
+    pub async fn publish_file<R>(
+        &self,
+        reader: &mut R,
+        file_name: &str,
+        block_size: u64,
+    ) -> anyhow::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
@@ -34,7 +39,10 @@ impl FilePublisher {
             if n == 0 {
                 break;
             }
-            self.blob_storage.lock().await.put(file_name.as_bytes(), &buf[..n])?;
+            self.blob_storage
+                .lock()
+                .await
+                .put(file_name.as_bytes(), &buf[..n])?;
         }
         todo!()
     }

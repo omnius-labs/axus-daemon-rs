@@ -49,7 +49,8 @@ impl UriConverter {
     fn decode_v1<T: RocketMessage>(text: &str) -> anyhow::Result<T> {
         let (crc, body) = Self::try_parse_body(text)?;
 
-        let crc = <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| anyhow::anyhow!("invalid crc"))?;
+        let crc =
+            <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| anyhow::anyhow!("invalid crc"))?;
         let mut body = Bytes::from(BASE64.decode(body.as_bytes())?);
 
         if crc != CASTAGNOLI.checksum(body.as_ref()).to_le_bytes() {
@@ -69,13 +70,17 @@ impl UriConverter {
     }
 
     fn try_parse_version(text: &str) -> anyhow::Result<(&str, u32)> {
-        let (text, version) = text.rsplit_once('.').ok_or(anyhow::anyhow!("separator not found"))?;
+        let (text, version) = text
+            .rsplit_once('.')
+            .ok_or(anyhow::anyhow!("separator not found"))?;
         let version: u32 = version.parse()?;
         Ok((text, version))
     }
 
     fn try_parse_body(text: &str) -> anyhow::Result<(&str, &str)> {
-        let (crc, body) = text.split_once('.').ok_or(anyhow::anyhow!("separator not found"))?;
+        let (crc, body) = text
+            .split_once('.')
+            .ok_or(anyhow::anyhow!("separator not found"))?;
         Ok((crc, body))
     }
 }

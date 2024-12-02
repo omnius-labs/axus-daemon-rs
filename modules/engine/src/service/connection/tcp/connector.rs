@@ -45,7 +45,8 @@ impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
                 let (host, port) = addr.parse_tcp_host()?;
                 if let Some(proxy_addr) = &self.proxy_option.addr {
                     let config = fast_socks5::client::Config::default();
-                    let stream = Socks5Stream::connect(proxy_addr.as_str(), host, port, config).await?;
+                    let stream =
+                        Socks5Stream::connect(proxy_addr.as_str(), host, port, config).await?;
                     let stream = stream.get_socket();
                     let (reader, writer) = tokio::io::split(stream);
                     let stream = FramedStream::new(reader, writer);

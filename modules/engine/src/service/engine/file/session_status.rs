@@ -21,14 +21,28 @@ pub struct SessionStatus {
 
 #[allow(unused)]
 impl SessionStatus {
-    pub fn new(exchange_type: ExchangeType, session: Session, root_hash: OmniHash, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
+    pub fn new(
+        exchange_type: ExchangeType,
+        session: Session,
+        root_hash: OmniHash,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+    ) -> Self {
         Self {
             exchange_type,
             session,
             root_hash,
-            sent_want_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(Duration::minutes(30), clock.clone()))),
-            sent_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(Duration::minutes(30), clock.clone()))),
-            received_want_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(Duration::minutes(30), clock.clone()))),
+            sent_want_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(
+                Duration::minutes(30),
+                clock.clone(),
+            ))),
+            sent_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(
+                Duration::minutes(30),
+                clock.clone(),
+            ))),
+            received_want_block_hashes: Arc::new(Mutex::new(VolatileHashSet::new(
+                Duration::minutes(30),
+                clock.clone(),
+            ))),
         }
     }
 }

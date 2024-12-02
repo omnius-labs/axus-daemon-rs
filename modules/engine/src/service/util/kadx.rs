@@ -3,7 +3,12 @@ use std::cmp::{self, Ordering};
 pub struct Kadex;
 
 impl Kadex {
-    pub fn find<'a>(base: &'a [u8], target: &'a [u8], elements: &[&'a [u8]], count: usize) -> Vec<&'a [u8]> {
+    pub fn find<'a>(
+        base: &'a [u8],
+        target: &'a [u8],
+        elements: &[&'a [u8]],
+        count: usize,
+    ) -> Vec<&'a [u8]> {
         let mut list: Vec<SortEntry<'a>> = Vec::new();
 
         let diff: Vec<u8> = target.iter().zip(base).map(|(x, y)| x ^ y).collect();

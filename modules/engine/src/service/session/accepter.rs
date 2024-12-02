@@ -9,12 +9,16 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::{
+    random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable,
+};
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
 use crate::service::{
     connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
-    session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
+    session::message::{
+        HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage,
+    },
 };
 
 use super::{
@@ -50,8 +54,13 @@ impl SessionAccepter {
         random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
-        let senders = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Sender<Session>>::new()));
-        let receivers = Arc::new(TokioMutex::new(HashMap::<SessionType, mpsc::Receiver<Session>>::new()));
+        let senders = Arc::new(TokioMutex::new(
+            HashMap::<SessionType, mpsc::Sender<Session>>::new(),
+        ));
+        let receivers = Arc::new(TokioMutex::new(HashMap::<
+            SessionType,
+            mpsc::Receiver<Session>,
+        >::new()));
 
         for typ in [SessionType::NodeFinder].iter() {
             let (tx, rx) = mpsc::channel(20);
@@ -91,7 +100,10 @@ impl SessionAccepter {
         let mut receivers = self.receivers.lock().await;
         let receiver = receivers.get_mut(typ).unwrap();
 
-        receiver.recv().await.ok_or_else(|| anyhow::anyhow!("Session not found"))
+        receiver
+            .recv()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))
     }
 }
 
@@ -163,9 +175,17 @@ impl Inner {
     async fn accept(&self) -> anyhow::Result<()> {
         let (stream, addr) = self.tcp_connector.accept().await?;
 
-        let send_hello_message = HelloMessage { version: SessionVersion::V1 };
-        stream.sender.lock().await.send_message(&send_hello_message).await?;
-        let received_hello_message: HelloMessage = stream.receiver.lock().await.recv_message().await?;
+        let send_hello_message = HelloMessage {
+            version: SessionVersion::V1,
+        };
+        stream
+            .sender
+            .lock()
+            .await
+            .send_message(&send_hello_message)
+            .await?;
+        let received_hello_message: HelloMessage =
+            stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -177,19 +197,38 @@ impl Inner {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
-            stream.sender.lock().await.send_message(&send_challenge_message).await?;
-            let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
+            stream
+                .sender
+                .lock()
+                .await
+                .send_message(&send_challenge_message)
+                .await?;
+            let receive_challenge_message: V1ChallengeMessage =
+                stream.receiver.lock().await.recv_message().await?;
 
             let send_signature = self.signer.sign(&receive_challenge_message.nonce)?;
-            let send_signature_message = V1SignatureMessage { cert: send_signature };
-            stream.sender.lock().await.send_message(&send_signature_message).await?;
-            let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
+            let send_signature_message = V1SignatureMessage {
+                cert: send_signature,
+            };
+            stream
+                .sender
+                .lock()
+                .await
+                .send_message(&send_signature_message)
+                .await?;
+            let received_signature_message: V1SignatureMessage =
+                stream.receiver.lock().await.recv_message().await?;
 
-            if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
+            if received_signature_message
+                .cert
+                .verify(send_nonce.as_slice())
+                .is_err()
+            {
                 anyhow::bail!("Invalid signature")
             }
 
-            let received_session_request_message: V1RequestMessage = stream.receiver.lock().await.recv_message().await?;
+            let received_session_request_message: V1RequestMessage =
+                stream.receiver.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
                 V1RequestType::Unknown => anyhow::bail!("Unknown request type"),
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
@@ -198,7 +237,12 @@ impl Inner {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Accept,
                 };
-                stream.sender.lock().await.send_message(&send_session_result_message).await?;
+                stream
+                    .sender
+                    .lock()
+                    .await
+                    .send_message(&send_session_result_message)
+                    .await?;
 
                 let session = Session {
                     typ: typ.clone(),
@@ -212,7 +256,12 @@ impl Inner {
                 let send_session_result_message = V1ResultMessage {
                     result_type: V1ResultType::Reject,
                 };
-                stream.sender.lock().await.send_message(&send_session_result_message).await?;
+                stream
+                    .sender
+                    .lock()
+                    .await
+                    .send_message(&send_session_result_message)
+                    .await?;
             }
 
             Ok(())

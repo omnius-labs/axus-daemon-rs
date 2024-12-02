@@ -90,9 +90,16 @@ impl Inner {
             return Ok(());
         }
 
-        let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
+        let session = self
+            .session_accepter
+            .accept(&SessionType::NodeFinder)
+            .await?;
 
-        self.session_sender.lock().await.send((HandshakeType::Accepted, session)).await?;
+        self.session_sender
+            .lock()
+            .await
+            .send((HandshakeType::Accepted, session))
+            .await?;
 
         Ok(())
     }
