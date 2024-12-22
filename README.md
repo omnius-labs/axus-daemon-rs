@@ -7,7 +7,9 @@
 [![test](https://github.com/omnius-labs/axus-daemon-rs/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/omnius-labs/axus-daemon-rs/actions/workflows/test.yml)
 [![chat](https://badges.gitter.im/omnius-labs.svg)](https://app.gitter.im/#/room/#omnius-labs:gitter.im)
 
-Axus is a peer-to-peer (P2P) file-sharing service, written in Rust, designed to facilitate secure and efficient data exchange.
+Axus is a peer-to-peer (P2P) file-sharing service.
+
+- Desktop UI: https://github.com/omnius-labs/axus-ui-desktop-cs
 
 ## Features
 
