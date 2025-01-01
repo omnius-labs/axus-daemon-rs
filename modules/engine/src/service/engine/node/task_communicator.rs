@@ -84,8 +84,7 @@ impl TaskCommunicator {
         let inner = self.inner.clone();
         let join_handle = tokio::spawn(async move {
             loop {
-                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await
-                {
+                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
                     let res = inner.clone().communicate(handshake_type, session);
                     if let Err(e) = res {
                         warn!("{:?}", e);
@@ -110,11 +109,7 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn communicate(
-        self,
-        handshake_type: HandshakeType,
-        session: Session,
-    ) -> anyhow::Result<()> {
+    pub fn communicate(self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
         let w = self.wait_group.worker();
         tokio::spawn(async move {
             select! {
@@ -131,11 +126,7 @@ impl Inner {
         Ok(())
     }
 
-    async fn communicate_sub(
-        &self,
-        handshake_type: HandshakeType,
-        session: Session,
-    ) -> anyhow::Result<()> {
+    async fn communicate_sub(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
         let my_node_profile = self.my_node_profile.lock().clone();
 
         let node_profile = Self::handshake(&session, &my_node_profile).await?;
@@ -164,22 +155,12 @@ impl Inner {
         Ok(())
     }
 
-    pub async fn handshake(
-        session: &Session,
-        node_profile: &NodeProfile,
-    ) -> anyhow::Result<NodeProfile> {
+    pub async fn handshake(session: &Session, node_profile: &NodeProfile) -> anyhow::Result<NodeProfile> {
         let send_hello_message = HelloMessage {
             version: NodeFinderVersion::V1,
         };
-        session
-            .stream
-            .sender
-            .lock()
-            .await
-            .send_message(&send_hello_message)
-            .await?;
-        let received_hello_message: HelloMessage =
-            session.stream.receiver.lock().await.recv_message().await?;
+        session.stream.sender.lock().await.send_message(&send_hello_message).await?;
+        let received_hello_message: HelloMessage = session.stream.receiver.lock().await.recv_message().await?;
 
         let version = send_hello_message.version | received_hello_message.version;
 
@@ -187,15 +168,8 @@ impl Inner {
             let send_profile_message = ProfileMessage {
                 node_profile: node_profile.clone(),
             };
-            session
-                .stream
-                .sender
-                .lock()
-                .await
-                .send_message(&send_profile_message)
-                .await?;
-            let received_profile_message: ProfileMessage =
-                session.stream.receiver.lock().await.recv_message().await?;
+            session.stream.sender.lock().await.send_message(&send_profile_message).await?;
+            let received_profile_message: ProfileMessage = session.stream.receiver.lock().await.recv_message().await?;
 
             Ok(received_profile_message.node_profile)
         } else {
@@ -220,10 +194,7 @@ impl Inner {
         })
     }
 
-    async fn send_sub(
-        status: SessionStatus,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> anyhow::Result<()> {
+    async fn send_sub(status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
         loop {
             sleeper.sleep(std::time::Duration::from_secs(30)).await;
 
@@ -232,25 +203,12 @@ impl Inner {
                 DataMessage {
                     push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
                     want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
-                    give_asset_key_locations: sending_data_message
-                        .give_asset_key_locations
-                        .drain()
-                        .collect(),
-                    push_asset_key_locations: sending_data_message
-                        .push_asset_key_locations
-                        .drain()
-                        .collect(),
+                    give_asset_key_locations: sending_data_message.give_asset_key_locations.drain().collect(),
+                    push_asset_key_locations: sending_data_message.push_asset_key_locations.drain().collect(),
                 }
             };
 
-            status
-                .session
-                .stream
-                .sender
-                .lock()
-                .await
-                .send_message(&data_message)
-                .await?;
+            status.session.stream.sender.lock().await.send_message(&data_message).await?;
         }
     }
 
@@ -280,20 +238,10 @@ impl Inner {
         loop {
             sleeper.sleep(std::time::Duration::from_secs(20)).await;
 
-            let data_message = status
-                .session
-                .stream
-                .receiver
-                .lock()
-                .await
-                .recv_message::<DataMessage>()
-                .await?;
+            let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
-            let push_node_profiles: Vec<&NodeProfile> =
-                data_message.push_node_profiles.iter().take(32).collect();
-            node_profile_repo
-                .insert_bulk_node_profile(&push_node_profiles, 0)
-                .await?;
+            let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
+            node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
             node_profile_repo.shrink(1024).await?;
 
             {
@@ -315,12 +263,8 @@ impl Inner {
                 );
 
                 received_data_message.want_asset_keys.shrink(1024 * 256);
-                received_data_message
-                    .give_asset_key_locations
-                    .shrink(1024 * 256);
-                received_data_message
-                    .push_asset_key_locations
-                    .shrink(1024 * 256);
+                received_data_message.give_asset_key_locations.shrink(1024 * 256);
+                received_data_message.push_asset_key_locations.shrink(1024 * 256);
             }
         }
     }
@@ -340,7 +284,7 @@ struct HelloMessage {
 
 impl RocketMessage for HelloMessage {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
-        writer.write_u32(value.version.bits());
+        writer.put_u32(value.version.bits());
 
         Ok(())
     }
@@ -349,8 +293,7 @@ impl RocketMessage for HelloMessage {
     where
         Self: Sized,
     {
-        let version = NodeFinderVersion::from_bits(reader.get_u32()?)
-            .ok_or_else(|| anyhow::anyhow!("invalid version"))?;
+        let version = NodeFinderVersion::from_bits(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid version"))?;
 
         Ok(Self { version })
     }
@@ -405,29 +348,29 @@ impl Default for DataMessage {
 
 impl RocketMessage for DataMessage {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
-        writer.write_u32(value.push_node_profiles.len().try_into()?);
+        writer.put_u32(value.push_node_profiles.len().try_into()?);
         for v in &value.push_node_profiles {
             NodeProfile::pack(writer, v, depth + 1)?;
         }
 
-        writer.write_u32(value.want_asset_keys.len().try_into()?);
+        writer.put_u32(value.want_asset_keys.len().try_into()?);
         for v in &value.want_asset_keys {
             AssetKey::pack(writer, v, depth + 1)?;
         }
 
-        writer.write_u32(value.give_asset_key_locations.len().try_into()?);
+        writer.put_u32(value.give_asset_key_locations.len().try_into()?);
         for (key, vs) in &value.give_asset_key_locations {
             AssetKey::pack(writer, key, depth + 1)?;
-            writer.write_u32(vs.len().try_into()?);
+            writer.put_u32(vs.len().try_into()?);
             for v in vs {
                 NodeProfile::pack(writer, v, depth + 1)?;
             }
         }
 
-        writer.write_u32(value.push_asset_key_locations.len().try_into()?);
+        writer.put_u32(value.push_asset_key_locations.len().try_into()?);
         for (key, vs) in &value.push_asset_key_locations {
             AssetKey::pack(writer, key, depth + 1)?;
-            writer.write_u32(vs.len().try_into()?);
+            writer.put_u32(vs.len().try_into()?);
             for v in vs {
                 NodeProfile::pack(writer, v, depth + 1)?;
             }

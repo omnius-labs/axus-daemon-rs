@@ -9,7 +9,7 @@ pub struct FileRef {
 
 impl RocketMessage for FileRef {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
-        writer.write_str(&value.name);
+        writer.put_str(&value.name);
         OmniHash::pack(writer, &value.hash, depth + 1)
     }
 

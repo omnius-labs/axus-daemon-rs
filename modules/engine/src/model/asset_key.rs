@@ -9,7 +9,7 @@ pub struct AssetKey {
 
 impl RocketMessage for AssetKey {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
-        writer.write_str(value.typ.to_string().as_str());
+        writer.put_str(value.typ.to_string().as_str());
         OmniHash::pack(writer, &value.hash, depth + 1)?;
 
         Ok(())

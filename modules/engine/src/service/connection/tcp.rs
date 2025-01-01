@@ -13,28 +13,21 @@ mod tests {
     use testresult::TestResult;
 
     use crate::service::connection::{
-        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
-        ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption,
-        TcpProxyType,
+        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _,
+        TcpProxyOption, TcpProxyType,
     };
 
     #[tokio::test]
     #[ignore]
     async fn simple_test() -> TestResult {
-        let accepter = ConnectionTcpAccepterImpl::new(
-            &OmniAddr::create_tcp("127.0.0.1".parse()?, 50000),
-            false,
-        )
-        .await?;
+        let accepter = ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, 50000), false).await?;
         let connector = ConnectionTcpConnectorImpl::new(TcpProxyOption {
             typ: TcpProxyType::None,
             addr: None,
         })
         .await?;
 
-        let connected_stream = connector
-            .connect(&OmniAddr::new("tcp(ip4(127.0.0.1),50000)"))
-            .await?;
+        let connected_stream = connector.connect(&OmniAddr::new("tcp(ip4(127.0.0.1),50000)")).await?;
         let (accepted_stream, _) = accepter.accept().await?;
 
         connected_stream
@@ -59,7 +52,7 @@ mod tests {
 
     impl RocketMessage for TestMessage {
         fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
-            writer.write_str(&value.value);
+            writer.put_str(&value.value);
 
             Ok(())
         }

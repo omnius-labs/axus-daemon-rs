@@ -12,22 +12,17 @@ pub struct NodeProfile {
 impl fmt::Display for NodeProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let addrs: Vec<String> = self.addrs.iter().map(|n| n.to_string()).collect();
-        write!(
-            f,
-            "id: {}, addrs: [{}]",
-            hex::encode(&self.id),
-            addrs.join(", ")
-        )
+        write!(f, "id: {}, addrs: [{}]", hex::encode(&self.id), addrs.join(", "))
     }
 }
 
 impl RocketMessage for NodeProfile {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
-        writer.write_bytes(&value.id);
+        writer.put_bytes(&value.id);
 
-        writer.write_u32(value.addrs.len().try_into()?);
+        writer.put_u32(value.addrs.len().try_into()?);
         for v in &value.addrs {
-            writer.write_str(v.as_str());
+            writer.put_str(v.as_str());
         }
 
         Ok(())
@@ -37,7 +32,7 @@ impl RocketMessage for NodeProfile {
     where
         Self: Sized,
     {
-        let id = reader.get_bytes(128)?.to_vec();
+        let id = reader.get_bytes(128)?;
 
         let len = reader.get_u32()?;
         if len > 128 {
