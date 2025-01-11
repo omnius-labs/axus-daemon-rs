@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use futures::FutureExt;
 use tokio::{
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -7,7 +8,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::sleeper::Sleeper;
+use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::service::session::{
     model::{Session, SessionType},
@@ -58,12 +59,17 @@ impl TaskAccepter {
         });
         *self.join_handle.lock().await = Some(join_handle);
     }
+}
 
-    pub async fn terminate(&self) {
+#[async_trait]
+impl Terminable for TaskAccepter {
+    async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
+
+        Ok(())
     }
 }
 
@@ -90,16 +96,9 @@ impl Inner {
             return Ok(());
         }
 
-        let session = self
-            .session_accepter
-            .accept(&SessionType::NodeFinder)
-            .await?;
+        let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
 
-        self.session_sender
-            .lock()
-            .await
-            .send((HandshakeType::Accepted, session))
-            .await?;
+        self.session_sender.lock().await.send((HandshakeType::Accepted, session)).await?;
 
         Ok(())
     }

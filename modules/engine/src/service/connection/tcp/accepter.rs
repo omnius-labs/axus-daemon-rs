@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use omnius_core_base::terminable::Terminable;
 use omnius_core_omnikit::model::OmniAddr;
 use tokio::net::TcpListener;
 
@@ -12,8 +13,7 @@ use crate::service::connection::FramedStream;
 use super::UpnpClient;
 
 #[async_trait]
-pub trait ConnectionTcpAccepter {
-    async fn terminate(&self) -> anyhow::Result<()>;
+pub trait ConnectionTcpAccepter: Terminable {
     async fn accept(&self) -> anyhow::Result<(FramedStream, SocketAddr)>;
     async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>>;
 }
@@ -55,14 +55,17 @@ impl ConnectionTcpAccepterImpl {
 }
 
 #[async_trait]
-impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
+impl Terminable for ConnectionTcpAccepterImpl {
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
             upnp_port_mapping.terminate().await?;
         }
         Ok(())
     }
+}
 
+#[async_trait]
+impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
     async fn accept(&self) -> anyhow::Result<(FramedStream, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
         let (reader, writer) = tokio::io::split(stream);
@@ -102,14 +105,15 @@ impl UpnpPortMapping {
         UpnpClient::delete_port_mapping("TCP", port).await?;
         UpnpClient::add_port_mapping("TCP", port, port, "axus").await?;
         let res = UpnpClient::get_external_ip_address().await?;
-        let external_ip = res
-            .get("NewExternalIPAddress")
-            .ok_or(anyhow::anyhow!("not found external ip"))?;
+        let external_ip = res.get("NewExternalIPAddress").ok_or(anyhow::anyhow!("not found external ip"))?;
         let external_ip = Ipv4Addr::from_str(external_ip.as_str())?;
         Ok(Self { port, external_ip })
     }
+}
 
-    pub async fn terminate(&self) -> anyhow::Result<()> {
+#[async_trait]
+impl Terminable for UpnpPortMapping {
+    async fn terminate(&self) -> anyhow::Result<()> {
         UpnpClient::delete_port_mapping("TCP", self.port).await?;
         Ok(())
     }

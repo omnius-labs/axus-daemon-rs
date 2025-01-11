@@ -33,18 +33,6 @@ pub struct TaskConnector {
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
 
-#[async_trait]
-impl Terminable for TaskConnector {
-    async fn terminate(&self) -> anyhow::Result<()> {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
-
-        Ok(())
-    }
-}
-
 impl TaskConnector {
     pub fn new(
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
@@ -86,6 +74,18 @@ impl TaskConnector {
     }
 }
 
+#[async_trait]
+impl Terminable for TaskConnector {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 struct Inner {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
@@ -113,9 +113,7 @@ impl Inner {
 
         let mut rng = ChaCha20Rng::from_entropy();
         let node_profiles = self.node_profile_repo.get_node_profiles().await?;
-        let node_profile = node_profiles
-            .choose(&mut rng)
-            .ok_or(anyhow::anyhow!("Not found node_profile"))?;
+        let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
 
         if self
             .sessions
@@ -132,19 +130,9 @@ impl Inner {
         }
 
         for addr in node_profile.addrs.iter() {
-            if let Ok(session) = self
-                .session_connector
-                .connect(addr, &SessionType::NodeFinder)
-                .await
-            {
-                self.session_sender
-                    .lock()
-                    .await
-                    .send((HandshakeType::Connected, session))
-                    .await?;
-                self.connected_node_profiles
-                    .lock()
-                    .insert(node_profile.clone());
+            if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
+                self.session_sender.lock().await.send((HandshakeType::Connected, session)).await?;
+                self.connected_node_profiles.lock().insert(node_profile.clone());
             }
         }
 

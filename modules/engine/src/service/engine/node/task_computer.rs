@@ -29,18 +29,6 @@ pub struct TaskComputer {
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
 
-#[async_trait]
-impl Terminable for TaskComputer {
-    async fn terminate(&self) -> anyhow::Result<()> {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
-
-        Ok(())
-    }
-}
-
 impl TaskComputer {
     pub fn new(
         my_node_profile: Arc<Mutex<NodeProfile>>,
@@ -85,6 +73,18 @@ impl TaskComputer {
     }
 }
 
+#[async_trait]
+impl Terminable for TaskComputer {
+    async fn terminate(&self) -> anyhow::Result<()> {
+        if let Some(join_handle) = self.join_handle.lock().await.take() {
+            join_handle.abort();
+            let _ = join_handle.fuse().await;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 struct Inner {
     my_node_profile: Arc<Mutex<NodeProfile>>,
@@ -99,9 +99,7 @@ impl Inner {
     pub async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
         let node_profiles = self.node_profile_fetcher.fetch().await?;
         let node_profiles: Vec<&NodeProfile> = node_profiles.iter().collect();
-        self.node_profile_repo
-            .insert_bulk_node_profile(&node_profiles, 0)
-            .await?;
+        self.node_profile_repo.insert_bulk_node_profile(&node_profiles, 0).await?;
 
         Ok(())
     }
@@ -115,28 +113,10 @@ impl Inner {
     #[allow(clippy::type_complexity)]
     async fn compute_sending_data_message(&self) -> anyhow::Result<()> {
         let my_node_profile = Arc::new(self.my_node_profile.lock().clone());
-        let cloud_node_profile: Vec<Arc<NodeProfile>> = self
-            .node_profile_repo
-            .get_node_profiles()
-            .await?
-            .into_iter()
-            .map(Arc::new)
-            .collect();
+        let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.get_node_profiles().await?.into_iter().map(Arc::new).collect();
 
-        let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self
-            .get_want_asset_keys_fn
-            .execute(&())
-            .into_iter()
-            .flatten()
-            .map(Arc::new)
-            .collect();
-        let my_get_push_asset_keys: HashSet<Arc<AssetKey>> = self
-            .get_push_asset_keys_fn
-            .execute(&())
-            .into_iter()
-            .flatten()
-            .map(Arc::new)
-            .collect();
+        let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self.get_want_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
+        let my_get_push_asset_keys: HashSet<Arc<AssetKey>> = self.get_push_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
 
         let mut received_data_map: HashMap<Vec<u8>, ReceivedTempDataMessage> = HashMap::new();
         {
@@ -144,18 +124,11 @@ impl Inner {
             for (id, status) in sessions.iter() {
                 let data = status.received_data_message.lock();
 
-                let mut want_asset_keys: Vec<Arc<AssetKey>> =
-                    data.want_asset_keys.iter().cloned().collect();
+                let mut want_asset_keys: Vec<Arc<AssetKey>> = data.want_asset_keys.iter().cloned().collect();
                 let mut give_asset_key_locations: Vec<(Arc<AssetKey>, Vec<Arc<NodeProfile>>)> =
-                    data.give_asset_key_locations
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.to_vec()))
-                        .collect();
+                    data.give_asset_key_locations.iter().map(|(k, v)| (k.clone(), v.to_vec())).collect();
                 let mut push_asset_key_locations: Vec<(Arc<AssetKey>, Vec<Arc<NodeProfile>>)> =
-                    data.push_asset_key_locations
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.to_vec()))
-                        .collect();
+                    data.push_asset_key_locations.iter().map(|(k, v)| (k.clone(), v.to_vec())).collect();
 
                 let mut rng = rand::thread_rng();
                 want_asset_keys.shuffle(&mut rng);
@@ -186,8 +159,7 @@ impl Inner {
         }
 
         // Wantリクエストを受けたノードに配布する情報
-        let mut give_asset_key_locations: HashMap<Arc<AssetKey>, HashSet<Arc<NodeProfile>>> =
-            HashMap::new();
+        let mut give_asset_key_locations: HashMap<Arc<AssetKey>, HashSet<Arc<NodeProfile>>> = HashMap::new();
         for asset_key in my_get_push_asset_keys.iter() {
             give_asset_key_locations
                 .entry(asset_key.clone())
@@ -206,8 +178,7 @@ impl Inner {
         }
 
         // Kadexの距離が近いノードに配布する情報
-        let mut push_asset_key_locations: HashMap<Arc<AssetKey>, HashSet<Arc<NodeProfile>>> =
-            HashMap::new();
+        let mut push_asset_key_locations: HashMap<Arc<AssetKey>, HashSet<Arc<NodeProfile>>> = HashMap::new();
         for asset_key in my_get_push_asset_keys.iter() {
             push_asset_key_locations
                 .entry(asset_key.clone())
@@ -227,23 +198,15 @@ impl Inner {
         let mut sending_want_asset_key_map: HashMap<&[u8], Vec<Arc<AssetKey>>> = HashMap::new();
         for target_key in want_asset_keys.iter() {
             for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
-                sending_want_asset_key_map
-                    .entry(id)
-                    .or_default()
-                    .push(target_key.clone());
+                sending_want_asset_key_map.entry(id).or_default().push(target_key.clone());
             }
         }
 
         // want_asset_keyを受け取ったノードにgive_asset_key_locationsを配布する
-        let mut sending_give_asset_key_location_map: HashMap<
-            &[u8],
-            HashMap<Arc<AssetKey>, &HashSet<Arc<NodeProfile>>>,
-        > = HashMap::new();
+        let mut sending_give_asset_key_location_map: HashMap<&[u8], HashMap<Arc<AssetKey>, &HashSet<Arc<NodeProfile>>>> = HashMap::new();
         for (id, data) in received_data_map.iter() {
             for target_key in data.want_asset_keys.iter() {
-                if let Some((target_key, node_profiles)) =
-                    give_asset_key_locations.get_key_value(target_key)
-                {
+                if let Some((target_key, node_profiles)) = give_asset_key_locations.get_key_value(target_key) {
                     sending_give_asset_key_location_map
                         .entry(id)
                         .or_default()
@@ -253,10 +216,7 @@ impl Inner {
         }
 
         // Kadexの距離が近いノードにpush_asset_key_locationsを配布する
-        let mut sending_push_asset_key_location_map: HashMap<
-            &[u8],
-            HashMap<Arc<AssetKey>, &HashSet<Arc<NodeProfile>>>,
-        > = HashMap::new();
+        let mut sending_push_asset_key_location_map: HashMap<&[u8], HashMap<Arc<AssetKey>, &HashSet<Arc<NodeProfile>>>> = HashMap::new();
         for (target_key, node_profiles) in push_asset_key_locations.iter() {
             for id in Kadex::find(&my_node_profile.id, &target_key.hash.value, &ids, 1) {
                 sending_push_asset_key_location_map
@@ -269,10 +229,7 @@ impl Inner {
         // Session毎にデータを実体化する
         let mut sending_data_map: HashMap<Vec<u8>, SendingDataMessage> = HashMap::new();
 
-        let push_node_profiles: Vec<NodeProfile> = push_node_profiles
-            .into_iter()
-            .map(|n| n.as_ref().clone())
-            .collect();
+        let push_node_profiles: Vec<NodeProfile> = push_node_profiles.into_iter().map(|n| n.as_ref().clone()).collect();
 
         for id in received_data_map.keys() {
             let want_asset_keys = sending_want_asset_key_map
@@ -287,24 +244,14 @@ impl Inner {
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| {
-                    (
-                        k.as_ref().clone(),
-                        v.iter().map(|n| n.as_ref().clone()).collect(),
-                    )
-                })
+                .map(|(k, v)| (k.as_ref().clone(), v.iter().map(|n| n.as_ref().clone()).collect()))
                 .collect();
             let push_asset_key_locations = sending_push_asset_key_location_map
                 .get(id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| {
-                    (
-                        k.as_ref().clone(),
-                        v.iter().map(|n| n.as_ref().clone()).collect(),
-                    )
-                })
+                .map(|(k, v)| (k.as_ref().clone(), v.iter().map(|n| n.as_ref().clone()).collect()))
                 .collect();
 
             let data_message = SendingDataMessage {

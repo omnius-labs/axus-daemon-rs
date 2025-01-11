@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use futures::future::join_all;
 use parking_lot::Mutex;
@@ -7,7 +8,7 @@ use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
 
-use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable as _};
+use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -17,10 +18,7 @@ use crate::{
     },
 };
 
-use super::{
-    HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, TaskAccepter,
-    TaskCommunicator, TaskComputer, TaskConnector,
-};
+use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
 
 #[allow(dead_code)]
 pub struct NodeFinder {
@@ -81,10 +79,7 @@ impl NodeFinder {
             session_receiver: Arc::new(TokioMutex::new(rx)),
             session_sender: Arc::new(TokioMutex::new(tx)),
             sessions: Arc::new(TokioRwLock::new(HashMap::new())),
-            connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(
-                Duration::seconds(180),
-                clock,
-            ))),
+            connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
             get_want_asset_keys_fn: Arc::new(FnHub::new()),
             get_push_asset_keys_fn: Arc::new(FnHub::new()),
 
@@ -159,8 +154,11 @@ impl NodeFinder {
         task.run().await;
         self.task_communicator.lock().await.replace(task);
     }
+}
 
-    pub async fn terminate(&self) -> anyhow::Result<()> {
+#[async_trait]
+impl Terminable for NodeFinder {
+    async fn terminate(&self) -> anyhow::Result<()> {
         {
             let mut task_connectors = self.task_connectors.lock().await;
             let task_connectors: Vec<TaskConnector> = task_connectors.drain(..).collect();
@@ -200,6 +198,7 @@ mod tests {
         clock::{Clock, ClockUtc},
         random_bytes::RandomBytesProviderImpl,
         sleeper::{Sleeper, SleeperImpl},
+        terminable::Terminable as _,
     };
     use parking_lot::Mutex;
     use testresult::TestResult;
@@ -211,8 +210,7 @@ mod tests {
         model::NodeProfile,
         service::{
             connection::{
-                ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector,
-                ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+                ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
             },
             engine::{node::NodeProfileRepo, NodeFinder, NodeProfileFetcherMock},
             session::{SessionAccepter, SessionConnector},
@@ -224,10 +222,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_test() -> TestResult {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_target(false)
-            .init();
+        tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).with_target(false).init();
 
         let dir = tempfile::tempdir()?;
 
@@ -265,19 +260,9 @@ mod tests {
         Ok(())
     }
 
-    async fn create_node_finder(
-        dir_path: &Path,
-        name: &str,
-        port: u16,
-        other_node_profile: NodeProfile,
-    ) -> anyhow::Result<NodeFinder> {
-        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> = Arc::new(
-            ConnectionTcpAccepterImpl::new(
-                &OmniAddr::create_tcp("127.0.0.1".parse()?, port),
-                false,
-            )
-            .await?,
-        );
+    async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> anyhow::Result<NodeFinder> {
+        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
+            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
         let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
@@ -288,37 +273,17 @@ mod tests {
 
         let clock: Arc<dyn Clock<Utc> + Send + Sync> = Arc::new(ClockUtc);
         let sleeper: Arc<dyn Sleeper + Send + Sync> = Arc::new(SleeperImpl);
-        let signer = Arc::new(OmniSigner::new(
-            OmniSignType::Ed25519_Sha3_256_Base64Url,
-            name,
-        )?);
+        let signer = Arc::new(OmniSigner::new(OmniSignType::Ed25519_Sha3_256_Base64Url, name)?);
         let random_bytes_provider = Arc::new(Mutex::new(RandomBytesProviderImpl::new()));
 
-        let session_accepter = Arc::new(
-            SessionAccepter::new(
-                tcp_accepter.clone(),
-                signer.clone(),
-                random_bytes_provider.clone(),
-                sleeper.clone(),
-            )
-            .await,
-        );
-        let session_connector = Arc::new(SessionConnector::new(
-            tcp_connector,
-            signer,
-            random_bytes_provider,
-        ));
+        let session_accepter =
+            Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await);
+        let session_connector = Arc::new(SessionConnector::new(tcp_connector, signer, random_bytes_provider));
 
         let node_ref_repo_dir = dir_path.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
 
-        let node_profile_repo = Arc::new(
-            NodeProfileRepo::new(
-                node_ref_repo_dir.as_os_str().to_str().unwrap(),
-                clock.clone(),
-            )
-            .await?,
-        );
+        let node_profile_repo = Arc::new(NodeProfileRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), clock.clone()).await?);
 
         let node_profile_fetcher = Arc::new(NodeProfileFetcherMock {
             node_profiles: vec![other_node_profile],
