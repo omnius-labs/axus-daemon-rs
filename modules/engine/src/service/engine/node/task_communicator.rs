@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use bitflags::bitflags;
 use chrono::Utc;
 use futures::FutureExt;
-use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 use parking_lot::Mutex;
 use tokio::{
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
@@ -13,6 +12,7 @@ use tokio::{
 use tracing::{info, warn};
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
+use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
 use crate::{
     model::{AssetKey, NodeProfile},
@@ -131,8 +131,8 @@ impl Inner {
 
         info!("Session established: {}", status.node_profile);
 
-        self.send(&status).await;
-        self.receive(&status).await;
+        self.spawn_send_task(&status).await;
+        self.spawn_receive_task(&status).await;
 
         Ok(())
     }
@@ -159,86 +159,86 @@ impl Inner {
         }
     }
 
-    async fn send(&self, status: &SessionStatus) {
+    async fn spawn_send_task(&self, status: &SessionStatus) {
         let status = status.clone();
         let sleeper = self.sleeper.clone();
         let join_handle = tokio::spawn(async move {
-            let res = Self::send_sub(status, sleeper).await;
-            if let Err(e) = res {
-                warn!("{:?}", e);
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(30)).await;
+
+                let res = Self::send(&status).await;
+                if let Err(e) = res {
+                    warn!("{:?}", e);
+                }
             }
         });
         self.join_handles.lock().await.push(join_handle);
     }
 
-    async fn send_sub(status: SessionStatus, sleeper: Arc<dyn Sleeper + Send + Sync>) -> anyhow::Result<()> {
-        loop {
-            sleeper.sleep(std::time::Duration::from_secs(30)).await;
+    async fn send(status: &SessionStatus) -> anyhow::Result<()> {
+        let data_message = {
+            let mut sending_data_message = status.sending_data_message.lock();
+            DataMessage {
+                push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
+                want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
+                give_asset_key_locations: sending_data_message.give_asset_key_locations.drain().collect(),
+                push_asset_key_locations: sending_data_message.push_asset_key_locations.drain().collect(),
+            }
+        };
 
-            let data_message = {
-                let mut sending_data_message = status.sending_data_message.lock();
-                DataMessage {
-                    push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
-                    want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
-                    give_asset_key_locations: sending_data_message.give_asset_key_locations.drain().collect(),
-                    push_asset_key_locations: sending_data_message.push_asset_key_locations.drain().collect(),
-                }
-            };
+        status.session.stream.sender.lock().await.send_message(&data_message).await?;
 
-            status.session.stream.sender.lock().await.send_message(&data_message).await?;
-        }
+        Ok(())
     }
 
-    async fn receive(&self, status: &SessionStatus) {
+    async fn spawn_receive_task(&self, status: &SessionStatus) {
         let status = status.clone();
         let node_profile_repo = self.node_profile_repo.clone();
         let sleeper = self.sleeper.clone();
         let join_handle = tokio::spawn(async move {
-            let res = Self::receive_sub(status, node_profile_repo, sleeper).await;
-            if let Err(e) = res {
-                warn!("{:?}", e);
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(20)).await;
+
+                let res = Self::receive(&status, &node_profile_repo).await;
+                if let Err(e) = res {
+                    warn!("{:?}", e);
+                }
             }
         });
         self.join_handles.lock().await.push(join_handle);
     }
 
-    async fn receive_sub(
-        status: SessionStatus,
-        node_profile_repo: Arc<NodeProfileRepo>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> anyhow::Result<()> {
-        loop {
-            sleeper.sleep(std::time::Duration::from_secs(20)).await;
+    async fn receive(status: &SessionStatus, node_profile_repo: &NodeProfileRepo) -> anyhow::Result<()> {
+        let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
-            let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
+        let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
+        node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+        node_profile_repo.shrink(1024).await?;
 
-            let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
-            node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
-            node_profile_repo.shrink(1024).await?;
+        {
+            let mut received_data_message = status.received_data_message.lock();
+            received_data_message
+                .want_asset_keys
+                .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
+            received_data_message.give_asset_key_locations.extend(
+                data_message
+                    .give_asset_key_locations
+                    .into_iter()
+                    .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
+            );
+            received_data_message.push_asset_key_locations.extend(
+                data_message
+                    .push_asset_key_locations
+                    .into_iter()
+                    .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
+            );
 
-            {
-                let mut received_data_message = status.received_data_message.lock();
-                received_data_message
-                    .want_asset_keys
-                    .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
-                received_data_message.give_asset_key_locations.extend(
-                    data_message
-                        .give_asset_key_locations
-                        .into_iter()
-                        .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
-                );
-                received_data_message.push_asset_key_locations.extend(
-                    data_message
-                        .push_asset_key_locations
-                        .into_iter()
-                        .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
-                );
-
-                received_data_message.want_asset_keys.shrink(1024 * 256);
-                received_data_message.give_asset_key_locations.shrink(1024 * 256);
-                received_data_message.push_asset_key_locations.shrink(1024 * 256);
-            }
+            received_data_message.want_asset_keys.shrink(1024 * 256);
+            received_data_message.give_asset_key_locations.shrink(1024 * 256);
+            received_data_message.push_asset_key_locations.shrink(1024 * 256);
         }
+
+        Ok(())
     }
 }
 
