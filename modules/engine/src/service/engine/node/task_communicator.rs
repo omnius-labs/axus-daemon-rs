@@ -61,11 +61,11 @@ impl TaskCommunicator {
     pub async fn run(&self) {
         let session_receiver = self.session_receiver.clone();
         let inner = self.inner.clone();
-        let session_tasks = self.session_join_handles.clone();
+        let session_join_handles = self.session_join_handles.clone();
         let join_handle = tokio::spawn(async move {
             loop {
                 // 終了済みのタスクを削除
-                session_tasks.lock().await.retain(|join_handle| !join_handle.is_finished());
+                session_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
 
                 if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
                     let inner = inner.clone();
@@ -75,7 +75,7 @@ impl TaskCommunicator {
                             warn!("{:?}", e);
                         }
                     });
-                    session_tasks.lock().await.push(join_handle);
+                    session_join_handles.lock().await.push(join_handle);
                 }
             }
         });
