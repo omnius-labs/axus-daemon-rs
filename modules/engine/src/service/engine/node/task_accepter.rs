@@ -26,7 +26,7 @@ pub struct TaskAccepter {
 
 impl TaskAccepter {
     pub fn new(
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_accepter: Arc<SessionAccepter>,
         option: NodeFinderOption,
@@ -76,7 +76,7 @@ impl Terminable for TaskAccepter {
 #[allow(dead_code)]
 #[derive(Clone)]
 struct Inner {
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_accepter: Arc<SessionAccepter>,
     option: NodeFinderOption,

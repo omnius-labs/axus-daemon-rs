@@ -33,7 +33,7 @@ pub struct NodeFinder {
 
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
@@ -219,8 +219,8 @@ mod tests {
 
     use super::NodeFinderOption;
 
-    #[tokio::test]
     #[ignore]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn simple_test() -> TestResult {
         tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).with_target(false).init();
 
@@ -246,11 +246,15 @@ mod tests {
         let nf2 = create_node_finder(&nf2_path, "2", 60002, np1).await?;
 
         loop {
-            if nf1.get_session_count().await == 1 && nf2.get_session_count().await == 1 {
+            let nf1_session_count = nf1.get_session_count().await;
+            let nf2_session_count = nf2.get_session_count().await;
+
+            if nf1_session_count == 1 && nf2_session_count == 1 {
                 break;
             }
+
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            info!("wait");
+            info!(nf1_session_count, nf2_session_count, "wait");
         }
         info!("done");
 

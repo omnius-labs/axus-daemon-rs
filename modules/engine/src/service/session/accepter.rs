@@ -131,7 +131,7 @@ impl TaskAccepter {
                 sleeper.sleep(std::time::Duration::from_secs(1)).await;
                 let res = inner.accept().await;
                 if let Err(e) = res {
-                    warn!("{:?}", e);
+                    warn!(error_message = e.to_string(), "accept failed");
                 }
             }
         });

@@ -6,9 +6,11 @@ use chrono::Utc;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use tokio::{
+    select,
     sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
@@ -29,53 +31,55 @@ pub struct TaskCommunicator {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     inner: Inner,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
-    session_join_handles: Arc<TokioMutex<Vec<JoinHandle<()>>>>,
+    communicate_join_handles: Arc<TokioMutex<Vec<JoinHandle<()>>>>,
+    cancellation_token: CancellationToken,
 }
 
 impl TaskCommunicator {
     pub fn new(
         my_node_profile: Arc<Mutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
+        let cancellation_token = CancellationToken::new();
         let inner = Inner {
             my_node_profile,
             sessions,
             node_profile_repo,
             clock,
             sleeper,
-            other_node_profile: Arc::new(TokioMutex::new(None)),
-            join_handles: Arc::new(TokioMutex::new(vec![])),
+            cancellation_token: cancellation_token.clone(),
         };
         Self {
             session_receiver,
             inner,
             join_handle: Arc::new(TokioMutex::new(None)),
-            session_join_handles: Arc::new(TokioMutex::new(vec![])),
+            communicate_join_handles: Arc::new(TokioMutex::new(vec![])),
+            cancellation_token,
         }
     }
 
     pub async fn run(&self) {
         let session_receiver = self.session_receiver.clone();
         let inner = self.inner.clone();
-        let session_join_handles = self.session_join_handles.clone();
+        let communicate_join_handles = self.communicate_join_handles.clone();
         let join_handle = tokio::spawn(async move {
             loop {
                 // 終了済みのタスクを削除
-                session_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
+                communicate_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
 
                 if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
                     let inner = inner.clone();
                     let join_handle = tokio::spawn(async move {
                         let res = inner.communicate(handshake_type, session).await;
                         if let Err(e) = res {
-                            warn!("{:?}", e);
+                            warn!(error_message = e.to_string(), "communicate failed");
                         }
                     });
-                    session_join_handles.lock().await.push(join_handle);
+                    communicate_join_handles.lock().await.push(join_handle);
                 }
             }
         });
@@ -91,7 +95,9 @@ impl Terminable for TaskCommunicator {
             let _ = join_handle.fuse().await;
         }
 
-        for join_handle in self.session_join_handles.lock().await.drain(..) {
+        self.cancellation_token.cancel();
+
+        for join_handle in self.communicate_join_handles.lock().await.drain(..) {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
@@ -103,23 +109,24 @@ impl Terminable for TaskCommunicator {
 #[derive(Clone)]
 struct Inner {
     my_node_profile: Arc<Mutex<NodeProfile>>,
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
-
-    other_node_profile: Arc<TokioMutex<Option<NodeProfile>>>,
-    join_handles: Arc<TokioMutex<Vec<JoinHandle<()>>>>,
+    cancellation_token: CancellationToken,
 }
 
 impl Inner {
     async fn communicate(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
         let my_node_profile = self.my_node_profile.lock().clone();
-
         let other_node_profile = Self::handshake(&session, &my_node_profile).await?;
-        self.other_node_profile.lock().await.replace(other_node_profile.clone());
 
-        let status = SessionStatus::new(handshake_type, session, other_node_profile, self.clock.clone());
+        let status = Arc::new(SessionStatus::new(
+            handshake_type,
+            session,
+            other_node_profile.clone(),
+            self.clock.clone(),
+        ));
 
         {
             let mut sessions = self.sessions.write().await;
@@ -129,10 +136,18 @@ impl Inner {
             sessions.insert(status.node_profile.id.clone(), status.clone());
         }
 
-        info!("Session established: {}", status.node_profile);
+        info!(node_profile = status.node_profile.to_string(), "Session established");
 
-        self.spawn_send_task(&status).await;
-        self.spawn_receive_task(&status).await;
+        let s = self.send(status.clone()).await;
+        let r = self.receive(status.clone()).await;
+        let _ = tokio::join!(s, r);
+
+        info!(node_profile = status.node_profile.to_string(), "Session closed");
+
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.remove(&other_node_profile.id);
+        }
 
         Ok(())
     }
@@ -159,25 +174,62 @@ impl Inner {
         }
     }
 
-    async fn spawn_send_task(&self, status: &SessionStatus) {
-        let status = status.clone();
+    async fn send(&self, status: Arc<SessionStatus>) -> JoinHandle<()> {
+        let sender = TaskSender { status: status.clone() };
         let sleeper = self.sleeper.clone();
-        let join_handle = tokio::spawn(async move {
-            loop {
-                sleeper.sleep(std::time::Duration::from_secs(30)).await;
-
-                let res = Self::send(&status).await;
-                if let Err(e) = res {
-                    warn!("{:?}", e);
+        let cancellation_token = self.cancellation_token.clone();
+        tokio::spawn(async move {
+            let f = async {
+                loop {
+                    sleeper.sleep(std::time::Duration::from_secs(20)).await;
+                    let res = sender.send().await;
+                    if let Err(e) = res {
+                        warn!(error_message = e.to_string(), "send failed",);
+                        return;
+                    }
                 }
-            }
-        });
-        self.join_handles.lock().await.push(join_handle);
+            };
+            select! {
+                _ = cancellation_token.cancelled() => {}
+                _ = f => {}
+            };
+        })
     }
 
-    async fn send(status: &SessionStatus) -> anyhow::Result<()> {
+    async fn receive(&self, status: Arc<SessionStatus>) -> JoinHandle<()> {
+        let receiver = TaskReceiver {
+            status: status.clone(),
+            node_profile_repo: self.node_profile_repo.clone(),
+        };
+        let sleeper = self.sleeper.clone();
+        let cancellation_token = self.cancellation_token.clone();
+        tokio::spawn(async move {
+            let f = async {
+                loop {
+                    sleeper.sleep(std::time::Duration::from_secs(20)).await;
+                    let res = receiver.receive().await;
+                    if let Err(e) = res {
+                        warn!(error_message = e.to_string(), "receive failed",);
+                        return;
+                    }
+                }
+            };
+            select! {
+                _ = cancellation_token.cancelled() => {}
+                _ = f => {}
+            }
+        })
+    }
+}
+
+struct TaskSender {
+    status: Arc<SessionStatus>,
+}
+
+impl TaskSender {
+    async fn send(&self) -> anyhow::Result<()> {
         let data_message = {
-            let mut sending_data_message = status.sending_data_message.lock();
+            let mut sending_data_message = self.status.sending_data_message.lock();
             DataMessage {
                 push_node_profiles: sending_data_message.push_node_profiles.drain(..).collect(),
                 want_asset_keys: sending_data_message.want_asset_keys.drain(..).collect(),
@@ -186,37 +238,27 @@ impl Inner {
             }
         };
 
-        status.session.stream.sender.lock().await.send_message(&data_message).await?;
+        self.status.session.stream.sender.lock().await.send_message(&data_message).await?;
 
         Ok(())
     }
+}
 
-    async fn spawn_receive_task(&self, status: &SessionStatus) {
-        let status = status.clone();
-        let node_profile_repo = self.node_profile_repo.clone();
-        let sleeper = self.sleeper.clone();
-        let join_handle = tokio::spawn(async move {
-            loop {
-                sleeper.sleep(std::time::Duration::from_secs(20)).await;
+struct TaskReceiver {
+    status: Arc<SessionStatus>,
+    node_profile_repo: Arc<NodeProfileRepo>,
+}
 
-                let res = Self::receive(&status, &node_profile_repo).await;
-                if let Err(e) = res {
-                    warn!("{:?}", e);
-                }
-            }
-        });
-        self.join_handles.lock().await.push(join_handle);
-    }
-
-    async fn receive(status: &SessionStatus, node_profile_repo: &NodeProfileRepo) -> anyhow::Result<()> {
-        let data_message = status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
+impl TaskReceiver {
+    async fn receive(&self) -> anyhow::Result<()> {
+        let data_message = self.status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
         let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
-        node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
-        node_profile_repo.shrink(1024).await?;
+        self.node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+        self.node_profile_repo.shrink(1024).await?;
 
         {
-            let mut received_data_message = status.received_data_message.lock();
+            let mut received_data_message = self.status.received_data_message.lock();
             received_data_message
                 .want_asset_keys
                 .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
@@ -236,23 +278,6 @@ impl Inner {
             received_data_message.want_asset_keys.shrink(1024 * 256);
             received_data_message.give_asset_key_locations.shrink(1024 * 256);
             received_data_message.push_asset_key_locations.shrink(1024 * 256);
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl Terminable for Inner {
-    async fn terminate(&self) -> anyhow::Result<()> {
-        for join_handle in self.join_handles.lock().await.drain(..) {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
-        }
-
-        if let Some(other_node_profile) = self.other_node_profile.lock().await.take() {
-            let mut sessions = self.sessions.write().await;
-            sessions.remove(&other_node_profile.id);
         }
 
         Ok(())

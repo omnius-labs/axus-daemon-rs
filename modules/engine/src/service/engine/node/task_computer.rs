@@ -34,7 +34,7 @@ impl TaskComputer {
         my_node_profile: Arc<Mutex<NodeProfile>>,
         node_profile_repo: Arc<NodeProfileRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
         get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -59,13 +59,13 @@ impl TaskComputer {
         let inner = self.inner.clone();
         let join_handle = tokio::spawn(async move {
             if let Err(e) = inner.set_initial_node_profile().await {
-                warn!("{:?}", e);
+                warn!(error_message = e.to_string(), "set initial node profile failed");
             }
             loop {
                 sleeper.sleep(std::time::Duration::from_secs(60)).await;
                 let res = inner.compute().await;
                 if let Err(e) = res {
-                    warn!("{:?}", e);
+                    warn!(error_message = e.to_string(), "compute failed");
                 }
             }
         });
@@ -90,7 +90,7 @@ struct Inner {
     my_node_profile: Arc<Mutex<NodeProfile>>,
     node_profile_repo: Arc<NodeProfileRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
     get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
 }

@@ -35,7 +35,7 @@ pub struct TaskConnector {
 
 impl TaskConnector {
     pub fn new(
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_connector: Arc<SessionConnector>,
         connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
@@ -66,7 +66,7 @@ impl TaskConnector {
                 sleeper.sleep(std::time::Duration::from_secs(1)).await;
                 let res = inner.connect().await;
                 if let Err(e) = res {
-                    warn!("{:?}", e);
+                    warn!(error_message = e.to_string(), "connect failed");
                 }
             }
         });
@@ -88,7 +88,7 @@ impl Terminable for TaskConnector {
 
 #[derive(Clone)]
 struct Inner {
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, SessionStatus>>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_connector: Arc<SessionConnector>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
@@ -122,11 +122,11 @@ impl Inner {
             .iter()
             .any(|(_, status)| status.node_profile.id == node_profile.id)
         {
-            anyhow::bail!("Already connected 1");
+            anyhow::bail!("Already connected");
         }
 
         if self.connected_node_profiles.lock().contains(node_profile) {
-            anyhow::bail!("Already connected 2");
+            anyhow::bail!("connected_node_profiles contains");
         }
 
         for addr in node_profile.addrs.iter() {
