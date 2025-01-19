@@ -89,6 +89,7 @@ impl TaskCommunicator {
 
 #[async_trait]
 impl Terminable for TaskCommunicator {
+    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

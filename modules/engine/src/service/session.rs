@@ -18,19 +18,15 @@ mod tests {
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
     use crate::service::{
-        connection::{
-            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _,
-            FramedSendExt as _, TcpProxyOption, TcpProxyType,
-        },
+        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
         session::{model::SessionType, SessionAccepter, SessionConnector},
     };
 
     #[tokio::test]
     #[ignore]
     async fn simple_test() -> TestResult {
-        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
-            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, 60000), false).await?);
-        let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
+        let tcp_accepter = Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, 60000), false).await?);
+        let tcp_connector = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
                 addr: None,

@@ -13,6 +13,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 use crate::{
     model::{AssetKey, NodeProfile},
     service::{
+        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl},
         session::{model::Session, SessionAccepter, SessionConnector},
         util::{FnHub, VolatileHashSet},
     },
@@ -23,6 +24,8 @@ use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, T
 #[allow(dead_code)]
 pub struct NodeFinder {
     my_node_profile: Arc<Mutex<NodeProfile>>,
+    tcp_connector: Arc<ConnectionTcpConnectorImpl>,
+    tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeProfileRepo>,
@@ -52,7 +55,10 @@ pub struct NodeFinderOption {
 }
 
 impl NodeFinder {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
+        tcp_connector: Arc<ConnectionTcpConnectorImpl>,
+        tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
         session_connector: Arc<SessionConnector>,
         session_accepter: Arc<SessionAccepter>,
         node_profile_repo: Arc<NodeProfileRepo>,
@@ -68,6 +74,8 @@ impl NodeFinder {
                 id: Self::gen_id(),
                 addrs: Vec::new(),
             })),
+            tcp_connector,
+            tcp_accepter,
             session_connector,
             session_accepter,
             node_profile_repo,
@@ -158,6 +166,7 @@ impl NodeFinder {
 
 #[async_trait]
 impl Terminable for NodeFinder {
+    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         {
             let mut task_connectors = self.task_connectors.lock().await;
@@ -185,6 +194,9 @@ impl Terminable for NodeFinder {
             }
         }
 
+        self.session_accepter.terminate().await?;
+        self.tcp_accepter.terminate().await?;
+
         Ok(())
     }
 }
@@ -209,9 +221,7 @@ mod tests {
     use crate::{
         model::NodeProfile,
         service::{
-            connection::{
-                ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
-            },
+            connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
             engine::{node::NodeProfileRepo, NodeFinder, NodeProfileFetcherMock},
             session::{SessionAccepter, SessionConnector},
         },
@@ -265,9 +275,8 @@ mod tests {
     }
 
     async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> anyhow::Result<NodeFinder> {
-        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
-            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
-        let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
+        let tcp_accepter = Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
+        let tcp_connector = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
                 addr: None,
@@ -282,7 +291,7 @@ mod tests {
 
         let session_accepter =
             Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await);
-        let session_connector = Arc::new(SessionConnector::new(tcp_connector, signer, random_bytes_provider));
+        let session_connector = Arc::new(SessionConnector::new(tcp_connector.clone(), signer, random_bytes_provider));
 
         let node_ref_repo_dir = dir_path.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
@@ -297,6 +306,8 @@ mod tests {
         fs::create_dir_all(&node_finder_dir)?;
 
         let result = NodeFinder::new(
+            tcp_connector,
+            tcp_accepter,
             session_connector,
             session_accepter,
             node_profile_repo,
