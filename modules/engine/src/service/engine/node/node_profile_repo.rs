@@ -15,10 +15,7 @@ pub struct NodeProfileRepo {
 }
 
 impl NodeProfileRepo {
-    pub async fn new(
-        dir_path: &str,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
         let path = path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
         let url = format!("sqlite:{}", path);
@@ -73,11 +70,7 @@ ORDER BY weight DESC, updated_time DESC
         Ok(res)
     }
 
-    pub async fn insert_bulk_node_profile(
-        &self,
-        vs: &[&NodeProfile],
-        weight: i64,
-    ) -> anyhow::Result<()> {
+    pub async fn insert_bulk_node_profile(&self, vs: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
         let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
             r#"
 INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
@@ -85,10 +78,7 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
         );
 
         let now = self.clock.now().naive_utc();
-        let vs: Vec<String> = vs
-            .iter()
-            .filter_map(|v| UriConverter::encode_node_profile(v).ok())
-            .collect();
+        let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
 
         query_builder.push_values(vs, |mut b, v| {
             b.push_bind(v);
@@ -151,11 +141,7 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let path = dir.path().as_os_str().to_str().unwrap();
 
-        let clock = Arc::new(FakeClockUtc::new(
-            DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")
-                .unwrap()
-                .into(),
-        ));
+        let clock = Arc::new(FakeClockUtc::new(DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into()));
         let repo = NodeProfileRepo::new(path, clock).await?;
 
         let vs: Vec<NodeProfile> = vec![

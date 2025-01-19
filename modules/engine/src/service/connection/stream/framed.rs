@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use omnius_core_omnikit::service::connection::codec::{
-    FramedReceiver, FramedRecv, FramedSend, FramedSender,
-};
+use omnius_core_omnikit::service::connection::codec::{FramedReceiver, FramedRecv, FramedSend, FramedSender};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Mutex as TokioMutex,
@@ -22,10 +20,7 @@ impl FramedStream {
         R: AsyncRead + Send + Unpin + 'static,
         W: AsyncWrite + Send + Unpin + 'static,
     {
-        let receiver = Arc::new(TokioMutex::new(FramedReceiver::new(
-            reader,
-            MAX_FRAME_LENGTH,
-        )));
+        let receiver = Arc::new(TokioMutex::new(FramedReceiver::new(reader, MAX_FRAME_LENGTH)));
         let sender = Arc::new(TokioMutex::new(FramedSender::new(writer, MAX_FRAME_LENGTH)));
         Self { receiver, sender }
     }

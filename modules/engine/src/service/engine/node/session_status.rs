@@ -24,12 +24,7 @@ pub struct SessionStatus {
 }
 
 impl SessionStatus {
-    pub fn new(
-        handshake_type: HandshakeType,
-        session: Session,
-        node_profile: NodeProfile,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    ) -> Self {
+    pub fn new(handshake_type: HandshakeType, session: Session, node_profile: NodeProfile, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
         Self {
             handshake_type,
             session,

@@ -18,10 +18,7 @@ pub struct FilePublisherRepo {
 
 #[allow(unused)]
 impl FilePublisherRepo {
-    pub async fn new(
-        dir_path: &str,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
         let path = path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
         let url = format!("sqlite:{}", path);
@@ -100,11 +97,7 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         Ok(res)
     }
 
-    pub async fn block_exists(
-        &self,
-        root_hash: OmniHash,
-        block_hash: OmniHash,
-    ) -> anyhow::Result<bool> {
+    pub async fn block_exists(&self, root_hash: OmniHash, block_hash: OmniHash) -> anyhow::Result<bool> {
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
