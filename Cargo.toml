@@ -3,16 +3,16 @@ debug = 1
 
 [workspace]
 members = [
-    "./refs/core-rs/modules/base",
-    "./refs/core-rs/modules/omnikit",
-    "./refs/core-rs/modules/rocketpack",
-    "./refs/core-rs/modules/testkit",
+  "./refs/core-rs/modules/base",
+  "./refs/core-rs/modules/omnikit",
+  "./refs/core-rs/modules/rocketpack",
+  "./refs/core-rs/modules/testkit",
 
-    "./entrypoints/daemon",
-    "./modules/engine",
+  "./entrypoints/daemon",
+  "./modules/engine",
 ]
 exclude = ["refs/core-rs"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 edition = "2021"
@@ -43,12 +43,12 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] }
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
 sqlx = { version = "0.8.2", features = [
-    "postgres",
-    "sqlite",
-    "chrono",
-    "json",
-    "macros",
-    "runtime-tokio-rustls",
+  "postgres",
+  "sqlite",
+  "chrono",
+  "json",
+  "macros",
+  "runtime-tokio-rustls",
 ] }
 tower-http = { version = "0.6.1", features = ["cors"] }
 utoipa = "4.2.3"
@@ -85,9 +85,9 @@ aes-gcm = "0.10.3"
 parking_lot = "0.12.3"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.1", features = [
-    "rand_core",
-    "serde",
-    "pkcs8",
+  "rand_core",
+  "serde",
+  "pkcs8",
 ] }
 num-traits = "0.2.19"
 num-derive = "0.4.2"

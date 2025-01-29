@@ -4,9 +4,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use omnius_core_base::terminable::Terminable;
-use omnius_core_omnikit::model::OmniAddr;
 use tokio::net::TcpListener;
+
+use omnius_core_base::{net::Reachable, terminable::Terminable};
+use omnius_core_omnikit::model::OmniAddr;
 
 use crate::service::connection::FramedStream;
 
@@ -77,17 +78,17 @@ impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
     async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {
         let mut res: Vec<IpAddr> = Vec::new();
         if let Ok(IpAddr::V4(ip4)) = local_ip_address::local_ip() {
-            if ip4.is_global() {
+            if ip4.is_reachable() {
                 res.push(IpAddr::V4(ip4));
             }
         }
         if let Ok(IpAddr::V6(ip6)) = local_ip_address::local_ipv6() {
-            if ip6.is_global() {
+            if ip6.is_reachable() {
                 res.push(IpAddr::V6(ip6));
             }
         }
         if let Some(upnp) = &self.upnp_port_mapping {
-            if upnp.external_ip.is_global() {
+            if upnp.external_ip.is_reachable() {
                 res.push(IpAddr::V4(upnp.external_ip));
             }
         }

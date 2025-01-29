@@ -64,7 +64,7 @@ impl<'a> BlobStorageKeyIterator<'a> {
     }
 }
 
-impl<'a> Iterator for BlobStorageKeyIterator<'a> {
+impl Iterator for BlobStorageKeyIterator<'_> {
     type Item = Box<[u8]>;
 
     fn next(&mut self) -> Option<Box<[u8]>> {
