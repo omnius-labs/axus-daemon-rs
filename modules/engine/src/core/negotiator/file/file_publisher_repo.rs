@@ -6,7 +6,7 @@ use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, Sqlite};
 use omnius_core_base::clock::Clock;
 use omnius_core_omnikit::model::OmniHash;
 
-use crate::service::util::{MigrationRequest, SqliteMigrator};
+use crate::core::util::{MigrationRequest, SqliteMigrator};
 
 use super::PublishedFile;
 

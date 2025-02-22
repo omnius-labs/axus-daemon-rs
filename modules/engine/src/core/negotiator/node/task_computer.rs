@@ -17,7 +17,7 @@ use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::{AssetKey, NodeProfile},
-    service::util::{FnExecutor, Kadex},
+    core::util::{FnExecutor, Kadex},
 };
 
 use super::{NodeProfileFetcher, NodeProfileRepo, SendingDataMessage, SessionStatus};

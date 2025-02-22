@@ -12,7 +12,7 @@ use tokio::{
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 
-use crate::service::storage::BlobStorage;
+use crate::core::storage::BlobStorage;
 
 use super::{file_publisher_repo::FilePublisherRepo, PublishedBlock};
 

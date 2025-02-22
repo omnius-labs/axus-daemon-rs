@@ -6,8 +6,8 @@ use sqlx::migrate::MigrateDatabase;
 use sqlx::QueryBuilder;
 use sqlx::{sqlite::SqlitePool, Sqlite};
 
-use crate::service::util::{MigrationRequest, SqliteMigrator};
-use crate::{model::NodeProfile, service::util::UriConverter};
+use crate::core::util::{MigrationRequest, SqliteMigrator};
+use crate::{core::util::UriConverter, model::NodeProfile};
 
 pub struct NodeProfileRepo {
     db: Arc<SqlitePool>,

@@ -17,7 +17,7 @@ mod tests {
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
-    use crate::service::{
+    use crate::core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
         session::{model::SessionType, SessionAccepter, SessionConnector},
     };

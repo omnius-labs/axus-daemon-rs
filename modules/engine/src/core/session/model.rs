@@ -1,6 +1,6 @@
 use omnius_core_omnikit::model::{OmniAddr, OmniCert};
 
-use crate::service::connection::FramedStream;
+use crate::core::connection::FramedStream;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionType {

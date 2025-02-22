@@ -3,7 +3,7 @@ use fast_socks5::client::Socks5Stream;
 use omnius_core_omnikit::model::OmniAddr;
 use tokio::net::TcpStream;
 
-use crate::service::connection::FramedStream;
+use crate::core::connection::FramedStream;
 
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,

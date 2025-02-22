@@ -12,7 +12,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::{AssetKey, NodeProfile},
-    service::{
+    core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl},
         session::{model::Session, SessionAccepter, SessionConnector},
         util::{FnHub, VolatileHashSet},
@@ -220,7 +220,7 @@ mod tests {
 
     use crate::{
         model::NodeProfile,
-        service::{
+        core::{
             connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
             engine::{node::NodeProfileRepo, NodeFinder, NodeProfileFetcherMock},
             session::{SessionAccepter, SessionConnector},

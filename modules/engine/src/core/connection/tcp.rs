@@ -12,7 +12,7 @@ mod tests {
     use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
     use testresult::TestResult;
 
-    use crate::service::connection::{
+    use crate::core::connection::{
         ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _,
         TcpProxyOption, TcpProxyType,
     };

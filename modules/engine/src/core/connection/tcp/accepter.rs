@@ -9,7 +9,7 @@ use tokio::net::TcpListener;
 use omnius_core_base::{net::Reachable, terminable::Terminable};
 use omnius_core_omnikit::model::OmniAddr;
 
-use crate::service::connection::FramedStream;
+use crate::core::connection::FramedStream;
 
 use super::UpnpClient;
 

@@ -12,7 +12,7 @@ use tracing::warn;
 use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable};
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
-use crate::service::{
+use crate::core::{
     connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
     session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
 };

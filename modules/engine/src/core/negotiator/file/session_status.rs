@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use omnius_core_base::clock::Clock;
 use omnius_core_omnikit::model::OmniHash;
 
-use crate::service::{session::model::Session, util::VolatileHashSet};
+use crate::core::{session::model::Session, util::VolatileHashSet};
 
 #[allow(unused)]
 #[derive(Clone)]

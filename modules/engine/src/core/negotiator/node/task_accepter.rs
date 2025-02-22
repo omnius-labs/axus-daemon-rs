@@ -10,7 +10,7 @@ use tracing::warn;
 
 use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
-use crate::service::session::{
+use crate::core::session::{
     model::{Session, SessionType},
     SessionAccepter,
 };

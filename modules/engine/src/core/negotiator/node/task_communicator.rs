@@ -18,7 +18,7 @@ use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWr
 
 use crate::{
     model::{AssetKey, NodeProfile},
-    service::{
+    core::{
         connection::{FramedRecvExt as _, FramedSendExt as _},
         session::model::Session,
     },

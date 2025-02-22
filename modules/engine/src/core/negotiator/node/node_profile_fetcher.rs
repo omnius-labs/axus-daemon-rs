@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{model::NodeProfile, service::util::UriConverter};
+use crate::{core::util::UriConverter, model::NodeProfile};
 
 #[async_trait]
 pub trait NodeProfileFetcher {

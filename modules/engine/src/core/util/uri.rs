@@ -84,7 +84,7 @@ impl UriConverter {
 mod tests {
     use omnius_core_omnikit::model::OmniAddr;
 
-    use crate::{model::NodeProfile, service::util::UriConverter};
+    use crate::{model::NodeProfile, core::util::UriConverter};
 
     #[test]
     pub fn node_profile_test() {

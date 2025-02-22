@@ -15,7 +15,7 @@ use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
     model::NodeProfile,
-    service::{
+    core::{
         session::{
             model::{Session, SessionType},
             SessionConnector,

@@ -15,7 +15,7 @@ exclude = ["refs/core-rs"]
 resolver = "3"
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 authors = ["Lyrise <lyrise1984@gmail.com>"]
 version = "0.1.0"
 
