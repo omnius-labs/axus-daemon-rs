@@ -57,7 +57,6 @@ impl ConnectionTcpAccepterImpl {
 
 #[async_trait]
 impl Terminable for ConnectionTcpAccepterImpl {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
             upnp_port_mapping.terminate().await?;
@@ -115,7 +114,6 @@ impl UpnpPortMapping {
 
 #[async_trait]
 impl Terminable for UpnpPortMapping {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         UpnpClient::delete_port_mapping("TCP", self.port).await?;
         Ok(())

@@ -6,17 +6,17 @@ use futures::future::join_all;
 use parking_lot::Mutex;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock};
+use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
-    model::{AssetKey, NodeProfile},
     core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl},
-        session::{model::Session, SessionAccepter, SessionConnector},
+        session::{SessionAccepter, SessionConnector, model::Session},
         util::{FnHub, VolatileHashSet},
     },
+    model::{AssetKey, NodeProfile},
 };
 
 use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
@@ -166,7 +166,6 @@ impl NodeFinder {
 
 #[async_trait]
 impl Terminable for NodeFinder {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         {
             let mut task_connectors = self.task_connectors.lock().await;
@@ -219,12 +218,12 @@ mod tests {
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
     use crate::{
-        model::NodeProfile,
         core::{
             connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
-            engine::{node::NodeProfileRepo, NodeFinder, NodeProfileFetcherMock},
+            negotiator::{NodeFinder, NodeProfileFetcherMock, node::NodeProfileRepo},
             session::{SessionAccepter, SessionConnector},
         },
+        model::NodeProfile,
     };
 
     use super::NodeFinderOption;

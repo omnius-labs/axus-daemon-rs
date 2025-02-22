@@ -3,10 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use futures::FutureExt;
 use parking_lot::Mutex;
-use rand::{seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha20Rng;
 use tokio::{
-    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
+    sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
 use tracing::warn;
@@ -14,14 +14,14 @@ use tracing::warn;
 use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
-    model::NodeProfile,
     core::{
         session::{
-            model::{Session, SessionType},
             SessionConnector,
+            model::{Session, SessionType},
         },
         util::VolatileHashSet,
     },
+    model::NodeProfile,
 };
 
 use super::{HandshakeType, NodeFinderOption, NodeProfileRepo, SessionStatus};
@@ -76,7 +76,6 @@ impl TaskConnector {
 
 #[async_trait]
 impl Terminable for TaskConnector {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

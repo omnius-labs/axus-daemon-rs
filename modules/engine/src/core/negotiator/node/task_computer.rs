@@ -16,8 +16,8 @@ use tracing::warn;
 use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::{
-    model::{AssetKey, NodeProfile},
     core::util::{FnExecutor, Kadex},
+    model::{AssetKey, NodeProfile},
 };
 
 use super::{NodeProfileFetcher, NodeProfileRepo, SendingDataMessage, SessionStatus};
@@ -75,7 +75,6 @@ impl TaskComputer {
 
 #[async_trait]
 impl Terminable for TaskComputer {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

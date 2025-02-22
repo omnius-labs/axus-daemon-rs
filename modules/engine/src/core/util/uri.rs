@@ -1,7 +1,7 @@
 use crate::model::NodeProfile;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64, Engine};
-use crc::{Crc, CRC_32_ISCSI};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64};
+use crc::{CRC_32_ISCSI, Crc};
 use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
@@ -84,7 +84,7 @@ impl UriConverter {
 mod tests {
     use omnius_core_omnikit::model::OmniAddr;
 
-    use crate::{model::NodeProfile, core::util::UriConverter};
+    use crate::{core::util::UriConverter, model::NodeProfile};
 
     #[test]
     pub fn node_profile_test() {

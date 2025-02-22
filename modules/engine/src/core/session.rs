@@ -19,7 +19,7 @@ mod tests {
 
     use crate::core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
-        session::{model::SessionType, SessionAccepter, SessionConnector},
+        session::{SessionAccepter, SessionConnector, model::SessionType},
     };
 
     #[tokio::test]

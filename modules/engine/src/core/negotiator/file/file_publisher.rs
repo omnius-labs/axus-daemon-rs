@@ -14,7 +14,7 @@ use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 
 use crate::core::storage::BlobStorage;
 
-use super::{file_publisher_repo::FilePublisherRepo, PublishedBlock};
+use super::{PublishedBlock, file_publisher_repo::FilePublisherRepo};
 
 #[allow(unused)]
 pub struct FilePublisher {
@@ -93,7 +93,6 @@ impl FilePublisher {
 
 #[async_trait]
 impl Terminable for FilePublisher {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

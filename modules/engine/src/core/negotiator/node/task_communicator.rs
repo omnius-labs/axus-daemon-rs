@@ -7,7 +7,7 @@ use futures::FutureExt;
 use parking_lot::Mutex;
 use tokio::{
     select,
-    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
+    sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -17,11 +17,11 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
 
 use crate::{
-    model::{AssetKey, NodeProfile},
     core::{
         connection::{FramedRecvExt as _, FramedSendExt as _},
         session::model::Session,
     },
+    model::{AssetKey, NodeProfile},
 };
 
 use super::{HandshakeType, NodeProfileRepo, SessionStatus};
@@ -89,7 +89,6 @@ impl TaskCommunicator {
 
 #[async_trait]
 impl Terminable for TaskCommunicator {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

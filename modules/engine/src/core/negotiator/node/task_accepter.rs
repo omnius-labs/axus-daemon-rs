@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use futures::FutureExt;
 use tokio::{
-    sync::{mpsc, Mutex as TokioMutex, RwLock as TokioRwLock},
+    sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
 use tracing::warn;
@@ -11,8 +11,8 @@ use tracing::warn;
 use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
 
 use crate::core::session::{
-    model::{Session, SessionType},
     SessionAccepter,
+    model::{Session, SessionType},
 };
 
 use super::{HandshakeType, NodeFinderOption, SessionStatus};
@@ -63,7 +63,6 @@ impl TaskAccepter {
 
 #[async_trait]
 impl Terminable for TaskAccepter {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();

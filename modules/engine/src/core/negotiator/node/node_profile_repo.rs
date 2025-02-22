@@ -2,9 +2,9 @@ use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
 use omnius_core_base::clock::Clock;
-use sqlx::migrate::MigrateDatabase;
 use sqlx::QueryBuilder;
-use sqlx::{sqlite::SqlitePool, Sqlite};
+use sqlx::migrate::MigrateDatabase;
+use sqlx::{Sqlite, sqlite::SqlitePool};
 
 use crate::core::util::{MigrationRequest, SqliteMigrator};
 use crate::{core::util::UriConverter, model::NodeProfile};

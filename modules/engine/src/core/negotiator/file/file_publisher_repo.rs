@@ -1,7 +1,7 @@
 use std::{path::Path, str::FromStr as _, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, Sqlite};
+use sqlx::{Sqlite, migrate::MigrateDatabase, sqlite::SqlitePool};
 
 use omnius_core_base::clock::Clock;
 use omnius_core_omnikit::model::OmniHash;

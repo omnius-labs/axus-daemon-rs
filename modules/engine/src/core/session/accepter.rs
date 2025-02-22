@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use futures::{future::join_all, FutureExt};
+use futures::{FutureExt, future::join_all};
 use parking_lot::Mutex;
 use tokio::{
-    sync::{mpsc, Mutex as TokioMutex},
+    sync::{Mutex as TokioMutex, mpsc},
     task::JoinHandle,
 };
 use tracing::warn;
@@ -86,7 +86,6 @@ impl SessionAccepter {
 
 #[async_trait]
 impl Terminable for SessionAccepter {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         let mut task_acceptors = self.task_acceptors.lock().await;
         let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
@@ -142,7 +141,6 @@ impl TaskAccepter {
 
 #[async_trait]
 impl Terminable for TaskAccepter {
-    type Error = anyhow::Error;
     async fn terminate(&self) -> anyhow::Result<()> {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
