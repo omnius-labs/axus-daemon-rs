@@ -41,7 +41,7 @@ impl FilePublisherRepo {
         let requests = vec![MigrationRequest {
             name: "2024-06-23_init".to_string(),
             queries: r#"
-CREATE TABLE IF NOT EXISTS files (
+CREATE TABLE IF NOT EXISTS committed_files (
     root_hash TEXT NOT NULL,
     file_name TEXT NOT NULL,
     block_size INTEGER NOT NULL,
