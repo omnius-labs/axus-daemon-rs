@@ -12,14 +12,14 @@ use tokio::{
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 
-use crate::core::storage::BlobStorage;
+use crate::core::storage::KeyValueFileStorage;
 
 use super::{PublishedBlock, file_publisher_repo::FilePublisherRepo};
 
 #[allow(unused)]
 pub struct FilePublisher {
     file_publisher_repo: Arc<FilePublisherRepo>,
-    blob_storage: Arc<TokioMutex<BlobStorage>>,
+    blob_storage: Arc<TokioMutex<KeyValueFileStorage>>,
 
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -32,14 +32,6 @@ impl FilePublisher {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = vec![0; block_size as usize];
-        loop {
-            let n = reader.read_exact(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            self.blob_storage.lock().await.put(file_name.as_bytes(), &buf[..n])?;
-        }
         todo!()
     }
 
@@ -78,7 +70,7 @@ impl FilePublisher {
 
     async fn write_uncommitted_block(&self, id: &str, block_hash: &OmniHash, value: &[u8]) -> anyhow::Result<()> {
         let path = Self::gen_uncommitted_block_path(id, block_hash);
-        self.blob_storage.lock().await.put(path.as_bytes(), value)?;
+        self.blob_storage.lock().await.put_value(path.as_str(), value).await?;
         Ok(())
     }
 

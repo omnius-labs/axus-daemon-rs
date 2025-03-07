@@ -1,12 +1,13 @@
 use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
-use omnius_core_base::clock::Clock;
 use sqlx::QueryBuilder;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{Sqlite, sqlite::SqlitePool};
 
-use crate::core::util::{MigrationRequest, SqliteMigrator};
+use omnius_core_base::clock::Clock;
+use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
+
 use crate::{core::util::UriConverter, model::NodeProfile};
 
 pub struct NodeProfileRepo {
@@ -25,16 +26,12 @@ impl NodeProfileRepo {
         }
 
         let db = Arc::new(SqlitePool::connect(&url).await?);
-        let res = Self { db, clock };
+        Self::migrate(db.as_ref()).await?;
 
-        res.migrate().await?;
-
-        Ok(res)
+        Ok(Self { db, clock })
     }
 
-    async fn migrate(&self) -> anyhow::Result<()> {
-        let migrator = SqliteMigrator::new(self.db.clone());
-
+    async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
         let requests = vec![MigrationRequest {
             name: "2024-03-19_init".to_string(),
             queries: r#"
@@ -48,7 +45,7 @@ CREATE TABLE IF NOT EXISTS node_profiles (
             .to_string(),
         }];
 
-        migrator.migrate(requests).await?;
+        SqliteMigrator::migrate(db, requests).await?;
 
         Ok(())
     }

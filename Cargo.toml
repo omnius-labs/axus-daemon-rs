@@ -4,6 +4,7 @@ debug = 1
 [workspace]
 members = [
   "./refs/core-rs/modules/base",
+  "./refs/core-rs/modules/migration",
   "./refs/core-rs/modules/omnikit",
   "./refs/core-rs/modules/rocketpack",
   "./refs/core-rs/modules/testkit",
@@ -21,9 +22,12 @@ version = "0.1.0"
 
 [workspace.dependencies]
 omnius-core-base = { path = "./refs/core-rs/modules/base" }
+omnius-core-migration = { path = "./refs/core-rs/modules/migration", features = [
+  "sqlite",
+] }
 omnius-core-omnikit = { path = "./refs/core-rs/modules/omnikit" }
-omnius-core-testkit = { path = "./refs/core-rs/modules/testkit" }
 omnius-core-rocketpack = { path = "./refs/core-rs/modules/rocketpack" }
+omnius-core-testkit = { path = "./refs/core-rs/modules/testkit" }
 
 rand = "0.8.5"
 rand_chacha = "0.3.1"
@@ -91,3 +95,4 @@ ed25519-dalek = { version = "2.1.1", features = [
 ] }
 num-traits = "0.2.19"
 num-derive = "0.4.2"
+async-stream = "0.3.6"
