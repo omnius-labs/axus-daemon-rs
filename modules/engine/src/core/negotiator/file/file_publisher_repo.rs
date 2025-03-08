@@ -99,7 +99,7 @@ SELECT COUNT(1)
     }
 
     pub async fn get_imported_files(&self) -> anyhow::Result<Vec<PublishedImportedFile>> {
-        let res: Vec<PublishedFileRow> = sqlx::query_as(
+        let res: Vec<PublishedImportedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
     FROM imported_files
@@ -133,22 +133,22 @@ SELECT COUNT(1)
 }
 
 #[derive(sqlx::FromRow)]
-struct PublishedFileRow {
+struct PublishedImportedFileRow {
     root_hash: String,
     file_name: String,
     block_size: i64,
-    property: Option<String>,
+    attrs: Option<String>,
     created_at: NaiveDateTime,
     updated_at: NaiveDateTime,
 }
 
-impl PublishedFileRow {
+impl PublishedImportedFileRow {
     pub fn into(self) -> anyhow::Result<PublishedImportedFile> {
         Ok(PublishedImportedFile {
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             file_name: self.file_name,
             block_size: self.block_size,
-            property: self.property,
+            attrs: self.attrs,
             created_at: DateTime::from_naive_utc_and_offset(self.created_at, Utc),
             updated_at: DateTime::from_naive_utc_and_offset(self.updated_at, Utc),
         })
@@ -160,7 +160,7 @@ impl PublishedFileRow {
             root_hash: item.root_hash.to_string(),
             file_name: item.file_name,
             block_size: item.block_size,
-            property: item.property,
+            attrs: item.attrs,
             created_at: item.created_at.naive_utc(),
             updated_at: item.updated_at.naive_utc(),
         })
