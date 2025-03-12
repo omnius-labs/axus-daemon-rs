@@ -20,7 +20,7 @@ use crate::{
     model::{AssetKey, NodeProfile},
 };
 
-use super::{NodeProfileFetcher, NodeProfileRepo, SendingDataMessage, SessionStatus};
+use super::{NodeProfileFetcher, NodeFinderRepo, SendingDataMessage, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskComputer {
@@ -32,7 +32,7 @@ pub struct TaskComputer {
 impl TaskComputer {
     pub fn new(
         my_node_profile: Arc<Mutex<NodeProfile>>,
-        node_profile_repo: Arc<NodeProfileRepo>,
+        node_profile_repo: Arc<NodeFinderRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
@@ -88,7 +88,7 @@ impl Terminable for TaskComputer {
 #[derive(Clone)]
 struct Inner {
     my_node_profile: Arc<Mutex<NodeProfile>>,
-    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_repo: Arc<NodeFinderRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
@@ -99,7 +99,7 @@ impl Inner {
     pub async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
         let node_profiles = self.node_profile_fetcher.fetch().await?;
         let node_profiles: Vec<&NodeProfile> = node_profiles.iter().collect();
-        self.node_profile_repo.insert_bulk_node_profile(&node_profiles, 0).await?;
+        self.node_profile_repo.insert_or_ignore_node_profiles(&node_profiles, 0).await?;
 
         Ok(())
     }
@@ -113,7 +113,7 @@ impl Inner {
     #[allow(clippy::type_complexity)]
     async fn compute_sending_data_message(&self) -> anyhow::Result<()> {
         let my_node_profile = Arc::new(self.my_node_profile.lock().clone());
-        let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.get_node_profiles().await?.into_iter().map(Arc::new).collect();
+        let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.fetch_node_profiles().await?.into_iter().map(Arc::new).collect();
 
         let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self.get_want_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
         let my_get_push_asset_keys: HashSet<Arc<AssetKey>> = self.get_push_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();

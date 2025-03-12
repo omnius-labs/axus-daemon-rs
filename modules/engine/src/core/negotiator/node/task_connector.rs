@@ -24,7 +24,7 @@ use crate::{
     model::NodeProfile,
 };
 
-use super::{HandshakeType, NodeFinderOption, NodeProfileRepo, SessionStatus};
+use super::{HandshakeType, NodeFinderOption, NodeFinderRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskConnector {
@@ -39,7 +39,7 @@ impl TaskConnector {
         session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
         session_connector: Arc<SessionConnector>,
         connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
-        node_profile_repo: Arc<NodeProfileRepo>,
+        node_profile_repo: Arc<NodeFinderRepo>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
     ) -> Self {
@@ -92,7 +92,7 @@ struct Inner {
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     session_connector: Arc<SessionConnector>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
-    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_repo: Arc<NodeFinderRepo>,
     option: NodeFinderOption,
 }
 
@@ -112,8 +112,8 @@ impl Inner {
         self.connected_node_profiles.lock().refresh();
 
         let mut rng = ChaCha20Rng::from_entropy();
-        let node_profiles = self.node_profile_repo.get_node_profiles().await?;
-        let node_profile = node_profiles.choose(&mut rng).ok_or(anyhow::anyhow!("Not found node_profile"))?;
+        let node_profiles = self.node_profile_repo.fetch_node_profiles().await?;
+        let node_profile = node_profiles.choose(&mut rng).ok_or_else(|| anyhow::anyhow!("Not found node_profile"))?;
 
         if self
             .sessions

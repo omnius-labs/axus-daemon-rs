@@ -1,2 +1,3 @@
-pub mod core;
+mod core;
 pub mod model;
+pub mod service;

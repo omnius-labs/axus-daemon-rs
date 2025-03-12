@@ -10,15 +10,15 @@ use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
 use crate::{core::util::UriConverter, model::NodeProfile};
 
-pub struct NodeProfileRepo {
+pub struct NodeFinderRepo {
     db: Arc<SqlitePool>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
-impl NodeProfileRepo {
+impl NodeFinderRepo {
     pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
-        let path = path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
+        let path = path.to_str().ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
         let url = format!("sqlite:{}", path);
 
         if !Sqlite::database_exists(url.as_str()).await.unwrap_or(false) {
@@ -50,11 +50,12 @@ CREATE TABLE IF NOT EXISTS node_profiles (
         Ok(())
     }
 
-    pub async fn get_node_profiles(&self) -> anyhow::Result<Vec<NodeProfile>> {
+    pub async fn fetch_node_profiles(&self) -> anyhow::Result<Vec<NodeProfile>> {
         let res: Vec<(String,)> = sqlx::query_as(
             r#"
-SELECT value FROM node_profiles
-ORDER BY weight DESC, updated_time DESC
+SELECT value
+    FROM node_profiles
+    ORDER BY weight DESC, updated_time DESC
 "#,
         )
         .fetch_all(self.db.as_ref())
@@ -67,23 +68,27 @@ ORDER BY weight DESC, updated_time DESC
         Ok(res)
     }
 
-    pub async fn insert_bulk_node_profile(&self, vs: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
-        let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
-            r#"
+    pub async fn insert_or_ignore_node_profiles(&self, items: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
+        const CHUNK_SIZE: i64 = 100;
+
+        for chunk in items.chunks(CHUNK_SIZE as usize) {
+            let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+                r#"
 INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
 "#,
-        );
+            );
 
-        let now = self.clock.now().naive_utc();
-        let vs: Vec<String> = vs.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
+            let now = self.clock.now().naive_utc();
+            let rows: Vec<String> = chunk.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
 
-        query_builder.push_values(vs, |mut b, v| {
-            b.push_bind(v);
-            b.push_bind(weight);
-            b.push_bind(now);
-            b.push_bind(now);
-        });
-        query_builder.build().execute(self.db.as_ref()).await?;
+            query_builder.push_values(rows, |mut b, row| {
+                b.push_bind(row);
+                b.push_bind(weight);
+                b.push_bind(now);
+                b.push_bind(now);
+            });
+            query_builder.build().execute(self.db.as_ref()).await?;
+        }
 
         Ok(())
     }
@@ -91,7 +96,8 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
     pub async fn shrink(&self, limit: usize) -> anyhow::Result<()> {
         let total: i64 = sqlx::query_scalar(
             r#"
-SELECT COUNT(*) FROM node_profiles
+SELECT COUNT(1)
+    FROM node_profiles
 "#,
         )
         .fetch_one(self.db.as_ref())
@@ -103,11 +109,11 @@ SELECT COUNT(*) FROM node_profiles
             sqlx::query(
                 r#"
 DELETE FROM node_profiles
-WHERE rowid IN (
-    SELECT rowid FROM node_profiles
-    ORDER BY updated_time ASC, rowid ASC
-    LIMIT ?
-)
+    WHERE rowid IN (
+        SELECT rowid FROM node_profiles
+        ORDER BY updated_time ASC, rowid ASC
+        LIMIT ?
+    )
 "#,
             )
             .bind(count_to_delete)
@@ -131,7 +137,7 @@ mod tests {
 
     use crate::model::NodeProfile;
 
-    use super::NodeProfileRepo;
+    use super::NodeFinderRepo;
 
     #[tokio::test]
     pub async fn simple_test() -> TestResult {
@@ -139,7 +145,7 @@ mod tests {
         let path = dir.path().as_os_str().to_str().unwrap();
 
         let clock = Arc::new(FakeClockUtc::new(DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").unwrap().into()));
-        let repo = NodeProfileRepo::new(path, clock).await?;
+        let repo = NodeFinderRepo::new(path, clock).await?;
 
         let vs: Vec<NodeProfile> = vec![
             NodeProfile {
@@ -152,17 +158,17 @@ mod tests {
             },
         ];
         let vs_ref: Vec<&NodeProfile> = vs.iter().collect();
-        repo.insert_bulk_node_profile(&vs_ref, 1).await?;
+        repo.insert_or_ignore_node_profiles(&vs_ref, 1).await?;
 
-        let res = repo.get_node_profiles().await?;
+        let res = repo.fetch_node_profiles().await?;
         assert_eq!(res, vs);
 
         repo.shrink(1).await?;
-        let res = repo.get_node_profiles().await?;
+        let res = repo.fetch_node_profiles().await?;
         assert_eq!(res, vs.into_iter().skip(1).collect::<Vec<_>>());
 
         repo.shrink(0).await?;
-        let res = repo.get_node_profiles().await?;
+        let res = repo.fetch_node_profiles().await?;
         assert_eq!(res, vec![]);
 
         Ok(())

@@ -19,7 +19,7 @@ use crate::{
     model::{AssetKey, NodeProfile},
 };
 
-use super::{HandshakeType, NodeProfileFetcher, NodeProfileRepo, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
+use super::{HandshakeType, NodeFinderRepo, NodeProfileFetcher, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
 
 #[allow(dead_code)]
 pub struct NodeFinder {
@@ -28,7 +28,7 @@ pub struct NodeFinder {
     tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
-    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_repo: Arc<NodeFinderRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -61,7 +61,7 @@ impl NodeFinder {
         tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
         session_connector: Arc<SessionConnector>,
         session_accepter: Arc<SessionAccepter>,
-        node_profile_repo: Arc<NodeProfileRepo>,
+        node_profile_repo: Arc<NodeFinderRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -220,7 +220,7 @@ mod tests {
     use crate::{
         core::{
             connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
-            negotiator::{NodeFinder, NodeProfileFetcherMock, node::NodeProfileRepo},
+            negotiator::{NodeFinder, NodeProfileFetcherMock, node::NodeFinderRepo},
             session::{SessionAccepter, SessionConnector},
         },
         model::NodeProfile,
@@ -295,7 +295,7 @@ mod tests {
         let node_ref_repo_dir = dir_path.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
 
-        let node_profile_repo = Arc::new(NodeProfileRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), clock.clone()).await?);
+        let node_profile_repo = Arc::new(NodeFinderRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), clock.clone()).await?);
 
         let node_profile_fetcher = Arc::new(NodeProfileFetcherMock {
             node_profiles: vec![other_node_profile],

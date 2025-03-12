@@ -106,7 +106,7 @@ impl UpnpPortMapping {
         UpnpClient::delete_port_mapping("TCP", port).await?;
         UpnpClient::add_port_mapping("TCP", port, port, "axus").await?;
         let res = UpnpClient::get_external_ip_address().await?;
-        let external_ip = res.get("NewExternalIPAddress").ok_or(anyhow::anyhow!("not found external ip"))?;
+        let external_ip = res.get("NewExternalIPAddress").ok_or_else(|| anyhow::anyhow!("not found external ip"))?;
         let external_ip = Ipv4Addr::from_str(external_ip.as_str())?;
         Ok(Self { port, external_ip })
     }

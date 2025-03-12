@@ -1,6 +1,6 @@
 mod node_finder;
+mod node_finder_repo;
 mod node_profile_fetcher;
-mod node_profile_repo;
 mod session_status;
 mod task_accepter;
 mod task_communicator;
@@ -8,8 +8,8 @@ mod task_computer;
 mod task_connector;
 
 pub use node_finder::*;
+use node_finder_repo::*;
 pub use node_profile_fetcher::*;
-use node_profile_repo::*;
 use session_status::*;
 use task_accepter::*;
 use task_communicator::*;

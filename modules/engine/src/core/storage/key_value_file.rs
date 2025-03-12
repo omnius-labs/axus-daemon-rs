@@ -7,8 +7,6 @@ use std::{
 use futures::Stream;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool, migrate::MigrateDatabase as _};
 use tokio::{fs::create_dir_all, sync::Mutex};
-use tokio_stream::StreamExt as _;
-use tokio_util::bytes::Bytes;
 
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
@@ -18,13 +16,11 @@ pub struct KeyValueFileStorage {
     lock: Mutex<()>,
 }
 
-const CHUNK_SIZE: i64 = 5000;
-
 impl KeyValueFileStorage {
     pub async fn new<P: AsRef<Path>>(dir_path: P) -> anyhow::Result<Self> {
         let dir_path = dir_path.as_ref().to_path_buf();
         let sqlite_path = dir_path.join("sqlite.db");
-        let sqlite_url = format!("sqlite:{}", sqlite_path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?);
+        let sqlite_url = format!("sqlite:{}", sqlite_path.to_str().ok_or_else(|| anyhow::anyhow!("Invalid path"))?);
 
         if !Sqlite::database_exists(sqlite_url.as_str()).await.unwrap_or(false) {
             Sqlite::create_database(sqlite_url.as_str()).await?;
@@ -81,6 +77,8 @@ CREATE TABLE IF NOT EXISTS keys (
     }
 
     pub async fn get_keys(&self) -> anyhow::Result<Pin<Box<impl Stream<Item = Result<String, anyhow::Error>>>>> {
+        const CHUNK_SIZE: i64 = 500;
+
         let _guard = self.lock.lock().await;
 
         let mut offset = 0;
@@ -135,7 +133,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(())
     }
 
-    pub async fn delete(&self, key: &str) -> anyhow::Result<bool> {
+    pub async fn delete_key(&self, key: &str) -> anyhow::Result<bool> {
         let _guard = self.lock.lock().await;
 
         let id = self.get_id(key).await?;
@@ -160,6 +158,8 @@ CREATE TABLE IF NOT EXISTS keys (
     where
         T: Fn(&str) -> bool,
     {
+        const CHUNK_SIZE: i64 = 100;
+
         let _guard = self.lock.lock().await;
 
         let mut tx = self.db.begin().await?;
@@ -281,6 +281,8 @@ struct Key {
 mod tests {
     use tempfile::tempdir;
     use testresult::TestResult;
+    use tokio_stream::StreamExt as _;
+    use tokio_util::bytes::Bytes;
 
     use super::*;
 
@@ -306,7 +308,7 @@ mod tests {
         assert_eq!(retrieved_value, value);
 
         // 値の削除
-        assert!(storage.delete(key).await?);
+        assert!(storage.delete_key(key).await?);
         assert!(!storage.contains_key(key).await?);
         assert!(storage.get_value(key).await?.is_none());
 
@@ -405,7 +407,7 @@ mod tests {
         let storage = KeyValueFileStorage::new(temp_dir.path()).await?;
 
         // 存在しないキーの削除
-        assert!(!storage.delete("non_existent").await?);
+        assert!(!storage.delete_key("non_existent").await?);
 
         // 存在しないキーのリネーム
         assert!(!storage.rename_key("non_existent", "new_key").await?);

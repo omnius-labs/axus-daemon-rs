@@ -69,13 +69,13 @@ impl UriConverter {
     }
 
     fn try_parse_version(text: &str) -> anyhow::Result<(&str, u32)> {
-        let (text, version) = text.rsplit_once('.').ok_or(anyhow::anyhow!("separator not found"))?;
+        let (text, version) = text.rsplit_once('.').ok_or_else(|| anyhow::anyhow!("separator not found"))?;
         let version: u32 = version.parse()?;
         Ok((text, version))
     }
 
     fn try_parse_body(text: &str) -> anyhow::Result<(&str, &str)> {
-        let (crc, body) = text.split_once('.').ok_or(anyhow::anyhow!("separator not found"))?;
+        let (crc, body) = text.split_once('.').ok_or_else(|| anyhow::anyhow!("separator not found"))?;
         Ok((crc, body))
     }
 }

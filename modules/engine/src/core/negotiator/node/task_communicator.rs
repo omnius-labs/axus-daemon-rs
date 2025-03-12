@@ -24,7 +24,7 @@ use crate::{
     model::{AssetKey, NodeProfile},
 };
 
-use super::{HandshakeType, NodeProfileRepo, SessionStatus};
+use super::{HandshakeType, NodeFinderRepo, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
@@ -39,7 +39,7 @@ impl TaskCommunicator {
     pub fn new(
         my_node_profile: Arc<Mutex<NodeProfile>>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        node_profile_repo: Arc<NodeProfileRepo>,
+        node_profile_repo: Arc<NodeFinderRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -110,7 +110,7 @@ impl Terminable for TaskCommunicator {
 struct Inner {
     my_node_profile: Arc<Mutex<NodeProfile>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_repo: Arc<NodeFinderRepo>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     cancellation_token: CancellationToken,
@@ -246,7 +246,7 @@ impl TaskSender {
 
 struct TaskReceiver {
     status: Arc<SessionStatus>,
-    node_profile_repo: Arc<NodeProfileRepo>,
+    node_profile_repo: Arc<NodeFinderRepo>,
 }
 
 impl TaskReceiver {
@@ -254,7 +254,7 @@ impl TaskReceiver {
         let data_message = self.status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
         let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
-        self.node_profile_repo.insert_bulk_node_profile(&push_node_profiles, 0).await?;
+        self.node_profile_repo.insert_or_ignore_node_profiles(&push_node_profiles, 0).await?;
         self.node_profile_repo.shrink(1024).await?;
 
         {
