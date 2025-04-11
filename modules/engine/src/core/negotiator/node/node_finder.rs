@@ -8,13 +8,14 @@ use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 
-use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
+    Result,
     core::{
-        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl},
+        connection::{ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl},
         session::{SessionAccepter, SessionConnector, model::Session},
-        util::{FnHub, VolatileHashSet},
+        util::{FnHub, Terminable, VolatileHashSet},
     },
     model::{AssetKey, NodeProfile},
 };
@@ -24,8 +25,8 @@ use super::{HandshakeType, NodeFinderRepo, NodeProfileFetcher, SessionStatus, Ta
 #[allow(dead_code)]
 pub struct NodeFinder {
     my_node_profile: Arc<Mutex<NodeProfile>>,
-    tcp_connector: Arc<ConnectionTcpConnectorImpl>,
-    tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
+    tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
+    tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeFinderRepo>,
@@ -57,8 +58,8 @@ pub struct NodeFinderOption {
 impl NodeFinder {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        tcp_connector: Arc<ConnectionTcpConnectorImpl>,
-        tcp_accepter: Arc<ConnectionTcpAccepterImpl>,
+        tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
+        tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         session_connector: Arc<SessionConnector>,
         session_accepter: Arc<SessionAccepter>,
         node_profile_repo: Arc<NodeFinderRepo>,
@@ -166,7 +167,7 @@ impl NodeFinder {
 
 #[async_trait]
 impl Terminable for NodeFinder {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         {
             let mut task_connectors = self.task_connectors.lock().await;
             let task_connectors: Vec<TaskConnector> = task_connectors.drain(..).collect();
@@ -209,7 +210,6 @@ mod tests {
         clock::{Clock, ClockUtc},
         random_bytes::RandomBytesProviderImpl,
         sleeper::{Sleeper, SleeperImpl},
-        terminable::Terminable as _,
     };
     use parking_lot::Mutex;
     use testresult::TestResult;
@@ -217,16 +217,12 @@ mod tests {
 
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
-    use crate::{
-        core::{
-            connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
-            negotiator::{NodeFinder, NodeProfileFetcherMock, node::NodeFinderRepo},
-            session::{SessionAccepter, SessionConnector},
-        },
-        model::NodeProfile,
+    use crate::core::{
+        connection::{TcpProxyOption, TcpProxyType},
+        negotiator::NodeProfileFetcherMock,
     };
 
-    use super::NodeFinderOption;
+    use super::*;
 
     #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -273,9 +269,10 @@ mod tests {
         Ok(())
     }
 
-    async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> anyhow::Result<NodeFinder> {
-        let tcp_accepter = Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
-        let tcp_connector = Arc::new(
+    async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> Result<NodeFinder> {
+        let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
+            Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
+        let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
             ConnectionTcpConnectorImpl::new(TcpProxyOption {
                 typ: TcpProxyType::None,
                 addr: None,

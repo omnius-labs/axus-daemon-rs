@@ -1,15 +1,11 @@
 mod file_exchanger;
-mod file_publisher;
-mod file_subscriber;
 mod model;
+mod publisher;
 mod session_status;
+mod subscriber;
 
-#[allow(unused_imports)]
 pub use file_exchanger::*;
-#[allow(unused_imports)]
-use file_publisher::*;
-#[allow(unused_imports)]
-use file_subscriber::*;
 use model::*;
-#[allow(unused_imports)]
+use publisher::*;
 use session_status::*;
+use subscriber::*;

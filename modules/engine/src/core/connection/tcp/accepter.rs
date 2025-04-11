@@ -6,17 +6,20 @@ use std::{
 use async_trait::async_trait;
 use tokio::net::TcpListener;
 
-use omnius_core_base::{net::Reachable, terminable::Terminable};
+use omnius_core_base::net::Reachable;
 use omnius_core_omnikit::model::OmniAddr;
 
-use crate::core::connection::FramedStream;
+use crate::{
+    Error, ErrorKind, Result,
+    core::{connection::FramedStream, util::Terminable},
+};
 
 use super::UpnpClient;
 
 #[async_trait]
 pub trait ConnectionTcpAccepter {
-    async fn accept(&self) -> anyhow::Result<(FramedStream, SocketAddr)>;
-    async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>>;
+    async fn accept(&self) -> Result<(FramedStream, SocketAddr)>;
+    async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>>;
 }
 
 pub struct ConnectionTcpAccepterImpl {
@@ -25,7 +28,7 @@ pub struct ConnectionTcpAccepterImpl {
 }
 
 impl ConnectionTcpAccepterImpl {
-    pub async fn new(addr: &OmniAddr, use_upnp: bool) -> anyhow::Result<Self> {
+    pub async fn new(addr: &OmniAddr, use_upnp: bool) -> Result<Self> {
         let socket_addr = addr.parse_tcp_ip()?;
         if socket_addr.is_ipv4() {
             let listener = TcpListener::bind(socket_addr).await?;
@@ -51,30 +54,30 @@ impl ConnectionTcpAccepterImpl {
                 upnp_port_mapping: None,
             });
         }
-        anyhow::bail!("invalid address");
+
+        Err(Error::new(ErrorKind::InvalidFormat).message("invalid address"))
     }
 }
 
 #[async_trait]
 impl Terminable for ConnectionTcpAccepterImpl {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
-            upnp_port_mapping.terminate().await?;
+            upnp_port_mapping.terminate().await;
         }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
-    async fn accept(&self) -> anyhow::Result<(FramedStream, SocketAddr)> {
+    async fn accept(&self) -> Result<(FramedStream, SocketAddr)> {
         let (stream, addr) = self.listener.accept().await?;
         let (reader, writer) = tokio::io::split(stream);
         let stream = FramedStream::new(reader, writer);
         Ok((stream, addr))
     }
 
-    async fn get_global_ip_addresses(&self) -> anyhow::Result<Vec<IpAddr>> {
+    async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>> {
         let mut res: Vec<IpAddr> = Vec::new();
         if let Ok(IpAddr::V4(ip4)) = local_ip_address::local_ip() {
             if ip4.is_reachable() {
@@ -102,11 +105,13 @@ struct UpnpPortMapping {
 }
 
 impl UpnpPortMapping {
-    pub async fn new(port: u16) -> anyhow::Result<Self> {
+    pub async fn new(port: u16) -> Result<Self> {
         UpnpClient::delete_port_mapping("TCP", port).await?;
         UpnpClient::add_port_mapping("TCP", port, port, "axus").await?;
         let res = UpnpClient::get_external_ip_address().await?;
-        let external_ip = res.get("NewExternalIPAddress").ok_or_else(|| anyhow::anyhow!("not found external ip"))?;
+        let external_ip = res
+            .get("NewExternalIPAddress")
+            .ok_or_else(|| Error::new(ErrorKind::NotFound).message("not found external ip"))?;
         let external_ip = Ipv4Addr::from_str(external_ip.as_str())?;
         Ok(Self { port, external_ip })
     }
@@ -114,8 +119,7 @@ impl UpnpPortMapping {
 
 #[async_trait]
 impl Terminable for UpnpPortMapping {
-    async fn terminate(&self) -> anyhow::Result<()> {
-        UpnpClient::delete_port_mapping("TCP", self.port).await?;
-        Ok(())
+    async fn terminate(&self) {
+        UpnpClient::delete_port_mapping("TCP", self.port).await;
     }
 }

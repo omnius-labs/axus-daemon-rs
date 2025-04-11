@@ -10,6 +10,8 @@ use tokio::{fs::create_dir_all, sync::Mutex};
 
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
+use crate::{Error, ErrorKind, Result};
+
 pub struct KeyValueFileStorage {
     dir_path: PathBuf,
     db: Arc<SqlitePool>,
@@ -17,10 +19,15 @@ pub struct KeyValueFileStorage {
 }
 
 impl KeyValueFileStorage {
-    pub async fn new<P: AsRef<Path>>(dir_path: P) -> anyhow::Result<Self> {
+    pub async fn new<P: AsRef<Path>>(dir_path: P) -> Result<Self> {
         let dir_path = dir_path.as_ref().to_path_buf();
         let sqlite_path = dir_path.join("sqlite.db");
-        let sqlite_url = format!("sqlite:{}", sqlite_path.to_str().ok_or_else(|| anyhow::anyhow!("Invalid path"))?);
+        let sqlite_url = format!(
+            "sqlite:{}",
+            sqlite_path
+                .to_str()
+                .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?
+        );
 
         if !Sqlite::database_exists(sqlite_url.as_str()).await.unwrap_or(false) {
             Sqlite::create_database(sqlite_url.as_str()).await?;
@@ -36,7 +43,7 @@ impl KeyValueFileStorage {
         })
     }
 
-    async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
+    async fn migrate(db: &SqlitePool) -> Result<()> {
         let requests = vec![MigrationRequest {
             name: "2025-03-05_init".to_string(),
             queries: r#"
@@ -53,7 +60,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(())
     }
 
-    pub async fn rename_key(&self, old_key: &str, new_key: &str) -> anyhow::Result<bool> {
+    pub async fn rename_key(&self, old_key: &str, new_key: &str) -> Result<bool> {
         let _guard = self.lock.lock().await;
 
         let result = sqlx::query("UPDATE keys SET name = ? WHERE name = ?")
@@ -65,7 +72,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn contains_key(&self, key: &str) -> anyhow::Result<bool> {
+    pub async fn contains_key(&self, key: &str) -> Result<bool> {
         let _guard = self.lock.lock().await;
 
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(1) FROM keys WHERE name = ? LIMIT 1")
@@ -76,7 +83,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(count > 0)
     }
 
-    pub async fn get_keys(&self) -> anyhow::Result<Pin<Box<impl Stream<Item = Result<String, anyhow::Error>>>>> {
+    pub async fn get_keys(&self) -> Result<Pin<Box<impl Stream<Item = Result<String>>>>> {
         const CHUNK_SIZE: i64 = 500;
 
         let _guard = self.lock.lock().await;
@@ -108,7 +115,7 @@ CREATE TABLE IF NOT EXISTS keys (
         }))
     }
 
-    pub async fn get_value(&self, key: &str) -> anyhow::Result<Option<Vec<u8>>> {
+    pub async fn get_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let _guard = self.lock.lock().await;
 
         let id = self.get_id(key).await?;
@@ -123,7 +130,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(Some(bytes))
     }
 
-    pub async fn put_value(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    pub async fn put_value(&self, key: &str, value: &[u8]) -> Result<()> {
         let _guard = self.lock.lock().await;
 
         let id = self.put_id(key).await?;
@@ -133,7 +140,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(())
     }
 
-    pub async fn delete_key(&self, key: &str) -> anyhow::Result<bool> {
+    pub async fn delete_key(&self, key: &str) -> Result<bool> {
         let _guard = self.lock.lock().await;
 
         let id = self.get_id(key).await?;
@@ -154,7 +161,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(true)
     }
 
-    pub async fn shrink<T>(&self, exclude_key: T) -> anyhow::Result<()>
+    pub async fn shrink<T>(&self, exclude_key: T) -> Result<()>
     where
         T: Fn(&str) -> bool,
     {
@@ -238,7 +245,7 @@ CREATE TEMP TABLE unused_keys (
         Ok(())
     }
 
-    async fn get_id(&self, key: &str) -> anyhow::Result<Option<i64>> {
+    async fn get_id(&self, key: &str) -> Result<Option<i64>> {
         let result: Option<(i64,)> = sqlx::query_as("SELECT id FROM keys WHERE name = ? LIMIT 1")
             .bind(key)
             .fetch_optional(self.db.as_ref())
@@ -246,7 +253,7 @@ CREATE TEMP TABLE unused_keys (
         Ok(result.map(|(id,)| id))
     }
 
-    async fn put_id(&self, key: &str) -> anyhow::Result<i64> {
+    async fn put_id(&self, key: &str) -> Result<i64> {
         let (id,): (i64,) = sqlx::query_as("INSERT INTO keys (name) VALUES (?) RETURNING id")
             .bind(key)
             .fetch_one(self.db.as_ref())
@@ -254,7 +261,7 @@ CREATE TEMP TABLE unused_keys (
         Ok(id)
     }
 
-    async fn gen_file_path(&self, id: i64) -> anyhow::Result<PathBuf> {
+    async fn gen_file_path(&self, id: i64) -> Result<PathBuf> {
         let relative_path = Self::gen_relative_file_path(id);
         let file_path = self.dir_path.join("blocks").join(relative_path);
         create_dir_all(file_path.parent().unwrap()).await?;

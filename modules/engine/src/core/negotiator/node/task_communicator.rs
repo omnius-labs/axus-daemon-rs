@@ -13,13 +13,17 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use omnius_core_base::{clock::Clock, sleeper::Sleeper, terminable::Terminable};
-use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
+use omnius_core_base::{clock::Clock, ensure_err, sleeper::Sleeper};
+use omnius_core_rocketpack::{
+    Error as RocketPackError, ErrorKind as RocketPackErrorKind, Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter,
+};
 
 use crate::{
+    Error, ErrorKind, Result,
     core::{
         connection::{FramedRecvExt as _, FramedSendExt as _},
         session::model::Session,
+        util::Terminable,
     },
     model::{AssetKey, NodeProfile},
 };
@@ -89,7 +93,7 @@ impl TaskCommunicator {
 
 #[async_trait]
 impl Terminable for TaskCommunicator {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
@@ -117,7 +121,7 @@ struct Inner {
 }
 
 impl Inner {
-    async fn communicate(&self, handshake_type: HandshakeType, session: Session) -> anyhow::Result<()> {
+    async fn communicate(&self, handshake_type: HandshakeType, session: Session) -> Result<()> {
         let my_node_profile = self.my_node_profile.lock().clone();
         let other_node_profile = Self::handshake(&session, &my_node_profile).await?;
 
@@ -131,7 +135,7 @@ impl Inner {
         {
             let mut sessions = self.sessions.write().await;
             if sessions.contains_key(&status.node_profile.id) {
-                return Err(anyhow::anyhow!("Session already exists"));
+                return Err(Error::new(ErrorKind::AlreadyConnected).message("Session already exists"));
             }
             sessions.insert(status.node_profile.id.clone(), status.clone());
         }
@@ -152,7 +156,7 @@ impl Inner {
         Ok(())
     }
 
-    pub async fn handshake(session: &Session, node_profile: &NodeProfile) -> anyhow::Result<NodeProfile> {
+    pub async fn handshake(session: &Session, node_profile: &NodeProfile) -> Result<NodeProfile> {
         let send_hello_message = HelloMessage {
             version: NodeFinderVersion::V1,
         };
@@ -170,7 +174,7 @@ impl Inner {
 
             Ok(received_profile_message.node_profile)
         } else {
-            anyhow::bail!("Invalid version")
+            return Err(Error::new(ErrorKind::UnsupportedVersion).message("Invalid version"));
         }
     }
 
@@ -227,7 +231,7 @@ struct TaskSender {
 }
 
 impl TaskSender {
-    async fn send(&self) -> anyhow::Result<()> {
+    async fn send(&self) -> Result<()> {
         let data_message = {
             let mut sending_data_message = self.status.sending_data_message.lock();
             DataMessage {
@@ -250,7 +254,7 @@ struct TaskReceiver {
 }
 
 impl TaskReceiver {
-    async fn receive(&self) -> anyhow::Result<()> {
+    async fn receive(&self) -> Result<()> {
         let data_message = self.status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
         let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
@@ -297,17 +301,18 @@ struct HelloMessage {
 }
 
 impl RocketMessage for HelloMessage {
-    fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> RocketPackResult<()> {
         writer.put_u32(value.version.bits());
 
         Ok(())
     }
 
-    fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> anyhow::Result<Self>
+    fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> RocketPackResult<Self>
     where
         Self: Sized,
     {
-        let version = NodeFinderVersion::from_bits(reader.get_u32()?).ok_or_else(|| anyhow::anyhow!("invalid version"))?;
+        let version = NodeFinderVersion::from_bits(reader.get_u32()?)
+            .ok_or_else(|| RocketPackError::new(RocketPackErrorKind::InvalidFormat).message("invalid version"))?;
 
         Ok(Self { version })
     }
@@ -319,13 +324,13 @@ struct ProfileMessage {
 }
 
 impl RocketMessage for ProfileMessage {
-    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> RocketPackResult<()> {
         NodeProfile::pack(writer, &value.node_profile, depth + 1)?;
 
         Ok(())
     }
 
-    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> anyhow::Result<Self>
+    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> RocketPackResult<Self>
     where
         Self: Sized,
     {
@@ -361,7 +366,7 @@ impl Default for DataMessage {
 }
 
 impl RocketMessage for DataMessage {
-    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> RocketPackResult<()> {
         writer.put_u32(value.push_node_profiles.len().try_into()?);
         for v in &value.push_node_profiles {
             NodeProfile::pack(writer, v, depth + 1)?;
@@ -393,39 +398,37 @@ impl RocketMessage for DataMessage {
         Ok(())
     }
 
-    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> anyhow::Result<Self>
+    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> RocketPackResult<Self>
     where
         Self: Sized,
     {
+        let get_too_large_err = || RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large");
+
         let len = reader.get_u32()?.try_into()?;
-        if len > 128 {
-            anyhow::bail!("len too large");
-        }
+        ensure_err!(len > 128, get_too_large_err);
+
         let mut push_node_profiles = Vec::with_capacity(len);
         for _ in 0..len {
             push_node_profiles.push(NodeProfile::unpack(reader, depth + 1)?);
         }
 
         let len = reader.get_u32()?.try_into()?;
-        if len > 128 {
-            anyhow::bail!("len too large");
-        }
+        ensure_err!(len > 128, get_too_large_err);
+
         let mut want_asset_keys = Vec::with_capacity(len);
         for _ in 0..len {
             want_asset_keys.push(AssetKey::unpack(reader, depth + 1)?);
         }
 
         let len = reader.get_u32()?.try_into()?;
-        if len > 128 {
-            anyhow::bail!("len too large");
-        }
+        ensure_err!(len > 128, get_too_large_err);
+
         let mut give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
             let len = reader.get_u32()?.try_into()?;
-            if len > 128 {
-                anyhow::bail!("len too large");
-            }
+            ensure_err!(len > 128, get_too_large_err);
+
             let mut vs = Vec::with_capacity(len);
             for _ in 0..len {
                 vs.push(NodeProfile::unpack(reader, depth + 1)?);
@@ -434,16 +437,14 @@ impl RocketMessage for DataMessage {
         }
 
         let len = reader.get_u32()?.try_into()?;
-        if len > 128 {
-            anyhow::bail!("len too large");
-        }
+        ensure_err!(len > 128, get_too_large_err);
+
         let mut push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
             let len = reader.get_u32()?.try_into()?;
-            if len > 128 {
-                anyhow::bail!("len too large");
-            }
+            ensure_err!(len > 128, get_too_large_err);
+
             let mut vs = Vec::with_capacity(len);
             for _ in 0..len {
                 vs.push(NodeProfile::unpack(reader, depth + 1)?);

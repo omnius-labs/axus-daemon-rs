@@ -9,7 +9,7 @@ pub use upnp_client::*;
 #[cfg(test)]
 mod tests {
     use omnius_core_omnikit::model::OmniAddr;
-    use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
+    use omnius_core_rocketpack::{Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter};
     use testresult::TestResult;
 
     use crate::core::connection::{
@@ -51,13 +51,13 @@ mod tests {
     }
 
     impl RocketMessage for TestMessage {
-        fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
+        fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> RocketPackResult<()> {
             writer.put_str(&value.value);
 
             Ok(())
         }
 
-        fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> anyhow::Result<Self>
+        fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> RocketPackResult<Self>
         where
             Self: Sized,
         {

@@ -4,6 +4,8 @@ use once_cell::sync::Lazy;
 use rupnp::ssdp::{SearchTarget, URN};
 use tokio_stream::StreamExt;
 
+use crate::{Error, ErrorKind, Result};
+
 static URNS: Lazy<Vec<URN>> = Lazy::new(|| {
     vec![
         URN::service("schemas-upnp-org", "WANIPConnection", 1),
@@ -14,7 +16,7 @@ static URNS: Lazy<Vec<URN>> = Lazy::new(|| {
 pub struct UpnpClient;
 
 impl UpnpClient {
-    pub async fn add_port_mapping(protocol: &str, external_port: u16, internal_port: u16, description: &str) -> anyhow::Result<()> {
+    pub async fn add_port_mapping(protocol: &str, external_port: u16, internal_port: u16, description: &str) -> Result<()> {
         let internal_ip = local_ip_address::local_ip()?.to_string();
         for urn in URNS.iter() {
             let name = "AddPortMapping";
@@ -44,10 +46,10 @@ impl UpnpClient {
             return Ok(());
         }
 
-        anyhow::bail!("failed to add port mapping");
+        Err(Error::new(ErrorKind::UpnpError).message("failed to add port mapping"))
     }
 
-    pub async fn delete_port_mapping(protocol: &str, external_port: u16) -> anyhow::Result<()> {
+    pub async fn delete_port_mapping(protocol: &str, external_port: u16) -> Result<()> {
         for urn in URNS.iter() {
             let name = "DeletePortMapping";
             let args = format!(
@@ -71,10 +73,10 @@ impl UpnpClient {
             return Ok(());
         }
 
-        anyhow::bail!("failed to delete port mapping");
+        Err(Error::new(ErrorKind::UpnpError).message("failed to delete port mapping"))
     }
 
-    pub async fn get_generic_port_mapping_entry(index: i32) -> anyhow::Result<HashMap<String, String>> {
+    pub async fn get_generic_port_mapping_entry(index: i32) -> Result<HashMap<String, String>> {
         for urn in URNS.iter() {
             let name = "GetGenericPortMappingEntry";
             let args = format!(
@@ -96,10 +98,10 @@ impl UpnpClient {
             return Ok(res.unwrap());
         }
 
-        anyhow::bail!("failed to get generic port mapping");
+        Err(Error::new(ErrorKind::UpnpError).message("failed to get generic port mapping"))
     }
 
-    pub async fn get_external_ip_address() -> anyhow::Result<HashMap<String, String>> {
+    pub async fn get_external_ip_address() -> Result<HashMap<String, String>> {
         for urn in URNS.iter() {
             let name = "GetExternalIPAddress";
             let args = format!(
@@ -120,10 +122,10 @@ impl UpnpClient {
             return Ok(res.unwrap());
         }
 
-        anyhow::bail!("failed to get external ip address");
+        Err(Error::new(ErrorKind::UpnpError).message("failed to get external ip address"))
     }
 
-    async fn action(urn: &URN, name: &str, args: &str) -> anyhow::Result<HashMap<String, String>> {
+    async fn action(urn: &URN, name: &str, args: &str) -> Result<HashMap<String, String>> {
         let search_target = SearchTarget::URN(urn.clone());
         let devices = rupnp::discover(&search_target, Duration::from_secs(3)).await?;
         pin_utils::pin_mut!(devices);
@@ -143,7 +145,7 @@ impl UpnpClient {
             return Ok(result.unwrap());
         }
 
-        anyhow::bail!("failed to UPnP action: {}", name);
+        Err(Error::new(ErrorKind::UpnpError).message(format!("failed to UPnP action: {}", name)))
     }
 }
 

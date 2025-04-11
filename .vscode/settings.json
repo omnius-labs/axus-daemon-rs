@@ -1,5 +1,6 @@
 {
     "rust-analyzer.showUnlinkedFileNotification": false,
+    "rust-analyzer.check.extraArgs": ["--", "-D", "warnings", "-A", "unused"],
     "cSpell.words": [
         "addrs",
         "axus",
@@ -8,8 +9,11 @@
         "Cbor",
         "chacha",
         "chrono",
+        "clippy",
         "dalek",
         "Deque",
+        "diffie",
+        "exif",
         "hasher",
         "hashset",
         "hkdf",
@@ -17,6 +21,7 @@
         "jsonwebtoken",
         "Kadex",
         "kadx",
+        "kamadak",
         "Lyrise",
         "merkle",
         "omni",
@@ -24,6 +29,7 @@
         "omnius",
         "pkcs",
         "Remoting",
+        "Repr",
         "reqwest",
         "rocketpack",
         "rocksdb",
@@ -32,6 +38,7 @@
         "rustls",
         "Seedable",
         "serde",
+        "sesv",
         "sqlx",
         "tempdir",
         "tempfile",
@@ -43,6 +50,7 @@
         "Upnp",
         "urlencoding",
         "utoipa",
-        "Varint"
+        "Varint",
+        "yamux"
     ]
 }

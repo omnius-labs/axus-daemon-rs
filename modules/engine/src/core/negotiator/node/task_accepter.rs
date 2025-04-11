@@ -8,11 +8,17 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::sleeper::Sleeper;
 
-use crate::core::session::{
-    SessionAccepter,
-    model::{Session, SessionType},
+use crate::{
+    Error, ErrorKind, Result,
+    core::{
+        session::{
+            SessionAccepter,
+            model::{Session, SessionType},
+        },
+        util::Terminable,
+    },
 };
 
 use super::{HandshakeType, NodeFinderOption, SessionStatus};
@@ -63,7 +69,7 @@ impl TaskAccepter {
 
 #[async_trait]
 impl Terminable for TaskAccepter {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
@@ -84,7 +90,7 @@ struct Inner {
 
 #[allow(dead_code)]
 impl Inner {
-    async fn accept(&self) -> anyhow::Result<()> {
+    async fn accept(&self) -> Result<()> {
         let session_count = self
             .sessions
             .read()
@@ -98,7 +104,12 @@ impl Inner {
 
         let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
 
-        self.session_sender.lock().await.send((HandshakeType::Accepted, session)).await?;
+        self.session_sender
+            .lock()
+            .await
+            .send((HandshakeType::Accepted, session))
+            .await
+            .map_err(|e| Error::new(ErrorKind::UnexpectedError).source(e))?;
 
         Ok(())
     }

@@ -8,7 +8,8 @@ use sqlx::{Sqlite, sqlite::SqlitePool};
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
-use crate::{core::util::UriConverter, model::NodeProfile};
+use crate::{Error, ErrorKind};
+use crate::{Result, core::util::UriConverter, model::NodeProfile};
 
 pub struct NodeFinderRepo {
     db: Arc<SqlitePool>,
@@ -16,9 +17,11 @@ pub struct NodeFinderRepo {
 }
 
 impl NodeFinderRepo {
-    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
+    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
-        let path = path.to_str().ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+        let path = path
+            .to_str()
+            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
         let url = format!("sqlite:{}", path);
 
         if !Sqlite::database_exists(url.as_str()).await.unwrap_or(false) {
@@ -31,7 +34,7 @@ impl NodeFinderRepo {
         Ok(Self { db, clock })
     }
 
-    async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
+    async fn migrate(db: &SqlitePool) -> Result<()> {
         let requests = vec![MigrationRequest {
             name: "2024-03-19_init".to_string(),
             queries: r#"
@@ -50,7 +53,7 @@ CREATE TABLE IF NOT EXISTS node_profiles (
         Ok(())
     }
 
-    pub async fn fetch_node_profiles(&self) -> anyhow::Result<Vec<NodeProfile>> {
+    pub async fn fetch_node_profiles(&self) -> Result<Vec<NodeProfile>> {
         let res: Vec<(String,)> = sqlx::query_as(
             r#"
 SELECT value
@@ -68,7 +71,7 @@ SELECT value
         Ok(res)
     }
 
-    pub async fn insert_or_ignore_node_profiles(&self, items: &[&NodeProfile], weight: i64) -> anyhow::Result<()> {
+    pub async fn insert_or_ignore_node_profiles(&self, items: &[&NodeProfile], weight: i64) -> Result<()> {
         const CHUNK_SIZE: i64 = 100;
 
         for chunk in items.chunks(CHUNK_SIZE as usize) {
@@ -93,7 +96,7 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
         Ok(())
     }
 
-    pub async fn shrink(&self, limit: usize) -> anyhow::Result<()> {
+    pub async fn shrink(&self, limit: usize) -> Result<()> {
         let total: i64 = sqlx::query_scalar(
             r#"
 SELECT COUNT(1)

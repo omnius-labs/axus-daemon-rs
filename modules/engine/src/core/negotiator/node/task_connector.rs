@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Read,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use futures::FutureExt;
@@ -11,15 +15,16 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
+    Error, ErrorKind, Result,
     core::{
         session::{
             SessionConnector,
             model::{Session, SessionType},
         },
-        util::VolatileHashSet,
+        util::{Terminable, VolatileHashSet},
     },
     model::NodeProfile,
 };
@@ -76,7 +81,7 @@ impl TaskConnector {
 
 #[async_trait]
 impl Terminable for TaskConnector {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
@@ -97,7 +102,7 @@ struct Inner {
 }
 
 impl Inner {
-    async fn connect(&self) -> anyhow::Result<()> {
+    async fn connect(&self) -> Result<()> {
         let session_count = self
             .sessions
             .read()
@@ -111,27 +116,33 @@ impl Inner {
 
         self.connected_node_profiles.lock().refresh();
 
+        let mut connected_ids: HashSet<Vec<u8>> = {
+            let v1: Vec<Vec<u8>> = self.connected_node_profiles.lock().iter().map(|n| n.id.to_owned()).collect();
+            let v2: Vec<Vec<u8>> = self.sessions.read().await.iter().map(|n| n.0.to_owned()).collect();
+            v1.into_iter().chain(v2.into_iter()).collect()
+        };
+
+        let node_profiles: Vec<NodeProfile> = self
+            .node_profile_repo
+            .fetch_node_profiles()
+            .await?
+            .into_iter()
+            .filter(|n| !connected_ids.contains(&n.id))
+            .collect();
+
         let mut rng = ChaCha20Rng::from_entropy();
-        let node_profiles = self.node_profile_repo.fetch_node_profiles().await?;
-        let node_profile = node_profiles.choose(&mut rng).ok_or_else(|| anyhow::anyhow!("Not found node_profile"))?;
-
-        if self
-            .sessions
-            .read()
-            .await
-            .iter()
-            .any(|(_, status)| status.node_profile.id == node_profile.id)
-        {
-            anyhow::bail!("Already connected");
-        }
-
-        if self.connected_node_profiles.lock().contains(node_profile) {
-            anyhow::bail!("connected_node_profiles contains");
-        }
+        let node_profile = node_profiles
+            .choose(&mut rng)
+            .ok_or_else(|| Error::new(ErrorKind::NotFound).message("node profile is not found"))?;
 
         for addr in node_profile.addrs.iter() {
             if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
-                self.session_sender.lock().await.send((HandshakeType::Connected, session)).await?;
+                self.session_sender
+                    .lock()
+                    .await
+                    .send((HandshakeType::Connected, session))
+                    .await
+                    .map_err(|e| Error::new(ErrorKind::UnexpectedError).source(e))?;
                 self.connected_node_profiles.lock().insert(node_profile.clone());
             }
         }

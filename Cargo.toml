@@ -21,6 +21,8 @@ authors = ["Lyrise <lyrise1984@gmail.com>"]
 version = "0.1.0"
 
 [workspace.dependencies]
+omnius-axus-engine = { path = "./modules/engine" }
+
 omnius-core-base = { path = "./refs/core-rs/modules/base" }
 omnius-core-migration = { path = "./refs/core-rs/modules/migration", features = [
   "sqlite",
@@ -96,3 +98,7 @@ ed25519-dalek = { version = "2.1.1", features = [
 num-traits = "0.2.19"
 num-derive = "0.4.2"
 async-stream = "0.3.6"
+clap = { version = "4.5.18", features = ["wrap_help", "derive"] }
+yamux = "0.13.3"
+toml = "0.8.19"
+backtrace = "0.3.74"

@@ -3,11 +3,18 @@ name = "omnius-axus-daemon"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+build = "build.rs"
 
 [features]
 stable-test = []
 
 [dependencies]
+omnius-axus-engine = { workspace = true }
+
+omnius-core-base = { workspace = true }
+omnius-core-rocketpack = { workspace = true }
+omnius-core-omnikit = { workspace = true }
+
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -36,6 +43,10 @@ base64 = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 serial_test = { workspace = true }
+toml = { workspace = true }
+tempfile = { workspace = true }
+clap = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }
+testresult = { workspace = true }

@@ -1,6 +1,6 @@
 mod file_subscriber;
 
-#[allow(unused_imports)]
+#[allow(unused)]
 use super::*;
-#[allow(unused_imports)]
+#[allow(unused)]
 pub use file_subscriber::*;

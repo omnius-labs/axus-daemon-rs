@@ -13,14 +13,15 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    core::util::{FnExecutor, Kadex},
+    Result,
+    core::util::{FnExecutor, Kadex, Terminable},
     model::{AssetKey, NodeProfile},
 };
 
-use super::{NodeProfileFetcher, NodeFinderRepo, SendingDataMessage, SessionStatus};
+use super::{NodeFinderRepo, NodeProfileFetcher, SendingDataMessage, SessionStatus};
 
 #[derive(Clone)]
 pub struct TaskComputer {
@@ -75,7 +76,7 @@ impl TaskComputer {
 
 #[async_trait]
 impl Terminable for TaskComputer {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
@@ -96,7 +97,7 @@ struct Inner {
 }
 
 impl Inner {
-    pub async fn set_initial_node_profile(&self) -> anyhow::Result<()> {
+    pub async fn set_initial_node_profile(&self) -> Result<()> {
         let node_profiles = self.node_profile_fetcher.fetch().await?;
         let node_profiles: Vec<&NodeProfile> = node_profiles.iter().collect();
         self.node_profile_repo.insert_or_ignore_node_profiles(&node_profiles, 0).await?;
@@ -104,14 +105,14 @@ impl Inner {
         Ok(())
     }
 
-    pub async fn compute(&self) -> anyhow::Result<()> {
+    pub async fn compute(&self) -> Result<()> {
         self.compute_sending_data_message().await?;
 
         Ok(())
     }
 
     #[allow(clippy::type_complexity)]
-    async fn compute_sending_data_message(&self) -> anyhow::Result<()> {
+    async fn compute_sending_data_message(&self) -> Result<()> {
         let my_node_profile = Arc::new(self.my_node_profile.lock().clone());
         let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.fetch_node_profiles().await?.into_iter().map(Arc::new).collect();
 

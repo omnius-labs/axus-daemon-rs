@@ -1,4 +1,4 @@
-use crate::model::NodeProfile;
+use crate::{Error, ErrorKind, model::NodeProfile};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64};
 use crc::{CRC_32_ISCSI, Crc};
@@ -6,20 +6,23 @@ use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
 
+use crate::Result;
+
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 pub struct UriConverter;
 
 impl UriConverter {
-    pub fn encode_node_profile(v: &NodeProfile) -> anyhow::Result<String> {
+    #[allow(unused)]
+    pub fn encode_node_profile(v: &NodeProfile) -> Result<String> {
         Self::encode("node", v)
     }
 
-    pub fn decode_node_profile(text: &str) -> anyhow::Result<NodeProfile> {
+    pub fn decode_node_profile(text: &str) -> Result<NodeProfile> {
         Self::decode("node", text)
     }
 
-    fn encode<T: RocketMessage>(typ: &str, v: &T) -> anyhow::Result<String> {
+    fn encode<T: RocketMessage>(typ: &str, v: &T) -> Result<String> {
         let body = v.export()?;
         let crc = CASTAGNOLI.checksum(&body).to_le_bytes();
 
@@ -36,46 +39,50 @@ impl UriConverter {
         Ok(s)
     }
 
-    fn decode<T: RocketMessage>(typ: &str, text: &str) -> anyhow::Result<T> {
+    fn decode<T: RocketMessage>(typ: &str, text: &str) -> Result<T> {
         let text = Self::try_parse_schema(typ, text)?;
         let (text, version) = Self::try_parse_version(text)?;
 
         match version {
             1 => Self::decode_v1(text),
-            _ => anyhow::bail!("unsupported version"),
+            _ => Error::new(ErrorKind::UnsupportedVersion),
         }
     }
 
-    fn decode_v1<T: RocketMessage>(text: &str) -> anyhow::Result<T> {
+    fn decode_v1<T: RocketMessage>(text: &str) -> Result<T> {
         let (crc, body) = Self::try_parse_body(text)?;
 
-        let crc = <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| anyhow::anyhow!("invalid crc"))?;
+        let crc = <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| Error::new(ErrorKind::InvalidFormat).message("invalid crc"))?;
         let mut body = Bytes::from(BASE64.decode(body.as_bytes())?);
 
         if crc != CASTAGNOLI.checksum(body.as_ref()).to_le_bytes() {
-            anyhow::bail!("invalid checksum")
+            return Err(Error::new(ErrorKind::InvalidFormat).message("invalid checksum"));
         }
 
         let v = T::import(&mut body)?;
         Ok(v)
     }
 
-    fn try_parse_schema<'a>(typ: &str, text: &'a str) -> anyhow::Result<&'a str> {
+    fn try_parse_schema<'a>(typ: &str, text: &'a str) -> Result<&'a str> {
         if text.starts_with(format!("axus:{}/", typ).as_str()) {
             let text = text.split_once('/').unwrap().1;
             return Ok(text);
         }
-        anyhow::bail!("invalid schema")
+        return Err(Error::new(ErrorKind::InvalidFormat).message("invalid schema"));
     }
 
-    fn try_parse_version(text: &str) -> anyhow::Result<(&str, u32)> {
-        let (text, version) = text.rsplit_once('.').ok_or_else(|| anyhow::anyhow!("separator not found"))?;
+    fn try_parse_version(text: &str) -> Result<(&str, u32)> {
+        let (text, version) = text
+            .rsplit_once('.')
+            .ok_or_else(|| Error::new(ErrorKind::InvalidFormat).message("separator not found"))?;
         let version: u32 = version.parse()?;
         Ok((text, version))
     }
 
-    fn try_parse_body(text: &str) -> anyhow::Result<(&str, &str)> {
-        let (crc, body) = text.split_once('.').ok_or_else(|| anyhow::anyhow!("separator not found"))?;
+    fn try_parse_body(text: &str) -> Result<(&str, &str)> {
+        let (crc, body) = text
+            .split_once('.')
+            .ok_or_else(|| Error::new(ErrorKind::InvalidFormat).message("separator not found"))?;
         Ok((crc, body))
     }
 }

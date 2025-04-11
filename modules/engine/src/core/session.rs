@@ -13,9 +13,9 @@ mod tests {
     use parking_lot::Mutex;
     use testresult::TestResult;
 
-    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper, terminable::Terminable as _};
+    use omnius_core_base::{random_bytes::RandomBytesProviderImpl, sleeper::FakeSleeper};
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
-    use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
+    use omnius_core_rocketpack::{Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter};
 
     use crate::core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
@@ -73,13 +73,13 @@ mod tests {
     }
 
     impl RocketMessage for TestMessage {
-        fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
+        fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> RocketPackResult<()> {
             writer.put_str(&value.value);
 
             Ok(())
         }
 
-        fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> anyhow::Result<Self>
+        fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> RocketPackResult<Self>
         where
             Self: Sized,
         {

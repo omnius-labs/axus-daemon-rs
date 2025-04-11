@@ -9,12 +9,16 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper, terminable::Terminable};
+use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
-use crate::core::{
-    connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
-    session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
+use crate::{
+    Error, ErrorKind, Result,
+    core::{
+        connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
+        session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
+        util::Terminable,
+    },
 };
 
 use super::{
@@ -76,17 +80,22 @@ impl SessionAccepter {
         }
     }
 
-    pub async fn accept(&self, typ: &SessionType) -> anyhow::Result<Session> {
+    pub async fn accept(&self, typ: &SessionType) -> Result<Session> {
         let mut receivers = self.receivers.lock().await;
-        let receiver = receivers.get_mut(typ).ok_or_else(|| anyhow::anyhow!("SessionType not found"))?;
+        let receiver = receivers
+            .get_mut(typ)
+            .ok_or_else(|| Error::new(ErrorKind::UnsupportedType).message("unsupported session type"))?;
 
-        receiver.recv().await.ok_or_else(|| anyhow::anyhow!("Receiver closed"))
+        receiver
+            .recv()
+            .await
+            .ok_or_else(|| Error::new(ErrorKind::EndOfStream).message("receiver is closed"))
     }
 }
 
 #[async_trait]
 impl Terminable for SessionAccepter {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         let mut task_acceptors = self.task_acceptors.lock().await;
         let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
         join_all(task_acceptors.iter().map(|task| task.terminate())).await;
@@ -141,7 +150,7 @@ impl TaskAccepter {
 
 #[async_trait]
 impl Terminable for TaskAccepter {
-    async fn terminate(&self) -> anyhow::Result<()> {
+    async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
@@ -160,7 +169,7 @@ struct Inner {
 }
 
 impl Inner {
-    async fn accept(&self) -> anyhow::Result<()> {
+    async fn accept(&self) -> Result<()> {
         let (stream, addr) = self.tcp_connector.accept().await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
@@ -170,12 +179,7 @@ impl Inner {
         let version = send_hello_message.version | received_hello_message.version;
 
         if version.contains(SessionVersion::V1) {
-            let send_nonce: [u8; 32] = self
-                .random_bytes_provider
-                .lock()
-                .get_bytes(32)
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
+            let send_nonce: [u8; 32] = self.random_bytes_provider.lock().get_bytes(32).as_slice().try_into()?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
             stream.sender.lock().await.send_message(&send_challenge_message).await?;
             let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
@@ -186,12 +190,12 @@ impl Inner {
             let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
-                anyhow::bail!("Invalid signature")
+                return Err(Error::new(ErrorKind::InvalidFormat).message("Invalid signature"));
             }
 
             let received_session_request_message: V1RequestMessage = stream.receiver.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
-                V1RequestType::Unknown => anyhow::bail!("Unknown request type"),
+                V1RequestType::Unknown => return Err(Error::new(ErrorKind::UnsupportedType).message("unsupported request type")),
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
             if let Ok(permit) = self.senders.lock().await.get(&typ).unwrap().try_reserve() {
@@ -217,7 +221,7 @@ impl Inner {
 
             Ok(())
         } else {
-            anyhow::bail!("Unsupported session version: {:?}", version)
+            return Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)));
         }
     }
 }

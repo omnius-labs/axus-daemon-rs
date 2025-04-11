@@ -1,5 +1,7 @@
 use omnius_core_omnikit::model::OmniHash;
-use omnius_core_rocketpack::{RocketMessage, RocketMessageReader, RocketMessageWriter};
+use omnius_core_rocketpack::{
+    Error as RocketPackError, ErrorKind as RocketPackErrorKind, Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileRef {
@@ -8,12 +10,12 @@ pub struct FileRef {
 }
 
 impl RocketMessage for FileRef {
-    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> anyhow::Result<()> {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> RocketPackResult<()> {
         writer.put_str(&value.name);
         OmniHash::pack(writer, &value.hash, depth + 1)
     }
 
-    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> anyhow::Result<Self>
+    fn unpack(reader: &mut RocketMessageReader, depth: u32) -> RocketPackResult<Self>
     where
         Self: Sized,
     {

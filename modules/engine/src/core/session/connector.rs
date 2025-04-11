@@ -4,9 +4,12 @@ use omnius_core_base::random_bytes::RandomBytesProvider;
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 use parking_lot::Mutex;
 
-use crate::core::{
-    connection::{ConnectionTcpConnector, FramedRecvExt as _, FramedSendExt as _},
-    session::message::{V1ChallengeMessage, V1SignatureMessage},
+use crate::{
+    Error, ErrorKind, Result,
+    core::{
+        connection::{ConnectionTcpConnector, FramedRecvExt as _, FramedSendExt as _},
+        session::message::{V1ChallengeMessage, V1SignatureMessage},
+    },
 };
 
 use super::{
@@ -33,7 +36,7 @@ impl SessionConnector {
         }
     }
 
-    pub async fn connect(&self, addr: &OmniAddr, typ: &SessionType) -> anyhow::Result<Session> {
+    pub async fn connect(&self, addr: &OmniAddr, typ: &SessionType) -> Result<Session> {
         let stream = self.tcp_connector.connect(addr).await?;
 
         let send_hello_message = HelloMessage { version: SessionVersion::V1 };
@@ -43,12 +46,7 @@ impl SessionConnector {
         let version = send_hello_message.version | received_hello_message.version;
 
         if version.contains(SessionVersion::V1) {
-            let send_nonce: [u8; 32] = self
-                .random_bytes_provider
-                .lock()
-                .get_bytes(32)
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
+            let send_nonce: [u8; 32] = self.random_bytes_provider.lock().get_bytes(32).as_slice().try_into()?;
             let send_challenge_message = V1ChallengeMessage { nonce: send_nonce };
             stream.sender.lock().await.send_message(&send_challenge_message).await?;
             let receive_challenge_message: V1ChallengeMessage = stream.receiver.lock().await.recv_message().await?;
@@ -59,7 +57,7 @@ impl SessionConnector {
             let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
-                anyhow::bail!("Invalid signature")
+                return Err(Error::new(ErrorKind::InvalidFormat).message("Invalid signature"));
             }
 
             let send_session_request_message = V1RequestMessage {
@@ -71,7 +69,7 @@ impl SessionConnector {
             let received_session_result_message: V1ResultMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_session_result_message.result_type == V1ResultType::Reject {
-                anyhow::bail!("Session rejected")
+                return Err(Error::new(ErrorKind::Reject).message("Session rejected"));
             }
 
             let session = Session {
@@ -84,7 +82,7 @@ impl SessionConnector {
 
             Ok(session)
         } else {
-            anyhow::bail!("Unsupported session version: {:?}", version)
+            return Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)));
         }
     }
 }

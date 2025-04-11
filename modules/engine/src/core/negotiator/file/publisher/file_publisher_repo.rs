@@ -2,10 +2,13 @@ use std::{path::Path, str::FromStr as _, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use sqlx::{QueryBuilder, Sqlite, migrate::MigrateDatabase, sqlite::SqlitePool};
+use tokio::sync::Mutex;
 
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 use omnius_core_omnikit::model::OmniHash;
+
+use crate::{Error, ErrorKind, Result, core::negotiator::file::model::PublishedUncommittedFileStatus};
 
 use super::{PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommittedBlock, PublishedUncommittedFile};
 
@@ -13,13 +16,16 @@ use super::{PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommitte
 pub struct FilePublisherRepo {
     db: Arc<SqlitePool>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
+    lock: Mutex<()>,
 }
 
 #[allow(unused)]
 impl FilePublisherRepo {
-    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> anyhow::Result<Self> {
+    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
         let path = Path::new(dir_path).join("sqlite.db");
-        let path = path.to_str().ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+        let path = path
+            .to_str()
+            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
         let url = format!("sqlite:{}", path);
 
         if !Sqlite::database_exists(url.as_str()).await.unwrap_or(false) {
@@ -29,10 +35,14 @@ impl FilePublisherRepo {
         let db = Arc::new(SqlitePool::connect(&url).await?);
         Self::migrate(&db).await?;
 
-        Ok(Self { db, clock })
+        Ok(Self {
+            db,
+            clock,
+            lock: Mutex::new(()),
+        })
     }
 
-    async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
+    async fn migrate(db: &SqlitePool) -> Result<()> {
         let requests = vec![MigrationRequest {
             name: "2024-06-23_init".to_string(),
             queries: r#"
@@ -57,14 +67,18 @@ CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_committed_blocks ON co
 
 -- uncommitted
 CREATE TABLE IF NOT EXISTS uncommitted_files (
-    id TEXT NOT NULL,
+    id TEXT NOT NULL PRIMARY KEY,
+    file_path TEXT NOT NULL,
     file_name TEXT NOT NULL,
     block_size INTEGER NOT NULL,
     attrs TEXT,
+    priority INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    failed_reason TEXT,
     created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    PRIMARY KEY (root_hash, file_name)
+    updated_at TIMESTAMP NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS unique_index_file_path_file_name_for_uncommitted_files ON uncommitted_files (file_path, file_name);
 CREATE TABLE IF NOT EXISTS uncommitted_blocks (
     file_id TEXT NOT NULL,
     block_hash TEXT NOT NULL,
@@ -82,7 +96,9 @@ CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_committed_blocks ON co
         Ok(())
     }
 
-    pub async fn contains_committed_file(&self, root_hash: &OmniHash) -> anyhow::Result<bool> {
+    pub async fn contains_committed_file(&self, root_hash: &OmniHash) -> Result<bool> {
+        let _guard = self.lock.lock().await;
+
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -98,7 +114,9 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_committed_file(&self, root_hash: &OmniHash) -> anyhow::Result<Option<PublishedCommittedFile>> {
+    pub async fn fetch_committed_file(&self, root_hash: &OmniHash) -> Result<Option<PublishedCommittedFile>> {
+        let _guard = self.lock.lock().await;
+
         let res: Option<PublishedCommittedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
@@ -113,7 +131,9 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         res.map(|r| r.into()).transpose()
     }
 
-    pub async fn fetch_committed_files(&self) -> anyhow::Result<Vec<PublishedCommittedFile>> {
+    pub async fn fetch_committed_files(&self) -> Result<Vec<PublishedCommittedFile>> {
+        let _guard = self.lock.lock().await;
+
         let res: Vec<PublishedCommittedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
@@ -127,7 +147,9 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         Ok(res)
     }
 
-    pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> anyhow::Result<()> {
+    pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         let row = PublishedCommittedFileRow::from(item)?;
         sqlx::query(
             r#"
@@ -147,7 +169,9 @@ INSERT INTO committed_files (root_hash, file_name, block_size, attrs, created_at
         Ok(())
     }
 
-    pub async fn contains_committed_block(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> anyhow::Result<bool> {
+    pub async fn contains_committed_block(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<bool> {
+        let _guard = self.lock.lock().await;
+
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -164,7 +188,9 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn insert_or_ignore_committed_blocks(&self, items: &[PublishedCommittedBlock]) -> anyhow::Result<()> {
+    pub async fn insert_or_ignore_committed_blocks(&self, items: &[PublishedCommittedBlock]) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         const CHUNK_SIZE: i64 = 100;
 
         for chunk in items.chunks(CHUNK_SIZE as usize) {
@@ -188,7 +214,9 @@ INSERT OR IGNORE INTO committed_blocks (root_hash, block_hash, rank, `index`)
         Ok(())
     }
 
-    pub async fn contains_uncommitted_file(&self, id: &str) -> anyhow::Result<bool> {
+    pub async fn contains_uncommitted_file(&self, id: &str) -> Result<bool> {
+        let _guard = self.lock.lock().await;
+
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -204,7 +232,26 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_uncommitted_file(&self, id: &str) -> anyhow::Result<Option<PublishedUncommittedFile>> {
+    pub async fn fetch_uncommitted_file_next(&self) -> Result<Option<PublishedUncommittedFile>> {
+        let _guard = self.lock.lock().await;
+
+        let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
+            r#"
+SELECT id, file_path, file_name, block_size, attrs, priority, created_at, updated_at
+    FROM uncommitted_files
+    ORDER BY priority ASC, created_at ASC
+    LIMIT 1
+"#,
+        )
+        .fetch_optional(self.db.as_ref())
+        .await?;
+
+        res.map(|r| r.into()).transpose()
+    }
+
+    pub async fn fetch_uncommitted_file(&self, id: &str) -> Result<Option<PublishedUncommittedFile>> {
+        let _guard = self.lock.lock().await;
+
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_name, block_size, property, created_at, updated_at
@@ -219,7 +266,9 @@ SELECT id, file_name, block_size, property, created_at, updated_at
         res.map(|r| r.into()).transpose()
     }
 
-    pub async fn fetch_uncommitted_files(&self) -> anyhow::Result<Vec<PublishedUncommittedFile>> {
+    pub async fn fetch_uncommitted_files(&self) -> Result<Vec<PublishedUncommittedFile>> {
+        let _guard = self.lock.lock().await;
+
         let res: Vec<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_name, block_size, property, created_at, updated_at
@@ -233,7 +282,9 @@ SELECT id, file_name, block_size, property, created_at, updated_at
         Ok(res)
     }
 
-    pub async fn insert_uncommitted_file(&self, item: &PublishedUncommittedFile) -> anyhow::Result<()> {
+    pub async fn insert_uncommitted_file(&self, item: &PublishedUncommittedFile) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         let row = PublishedUncommittedFileRow::from(item)?;
         sqlx::query(
             r#"
@@ -253,7 +304,9 @@ INSERT INTO uncommitted_files (id, file_name, block_size, attrs, created_at, upd
         Ok(())
     }
 
-    pub async fn delete_uncommitted_file(&self, id: &str) -> anyhow::Result<()> {
+    pub async fn delete_uncommitted_file(&self, id: &str) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         sqlx::query(
             r#"
 DELETE FROM uncommitted_files
@@ -267,7 +320,9 @@ DELETE FROM uncommitted_files
         Ok(())
     }
 
-    pub async fn contains_uncommitted_block(&self, file_id: &str, block_hash: &OmniHash) -> anyhow::Result<bool> {
+    pub async fn contains_uncommitted_block(&self, file_id: &str, block_hash: &OmniHash) -> Result<bool> {
+        let _guard = self.lock.lock().await;
+
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -284,7 +339,9 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_uncommitted_blocks(&self, file_id: &str) -> anyhow::Result<Vec<PublishedUncommittedBlock>> {
+    pub async fn fetch_uncommitted_blocks(&self, file_id: &str) -> Result<Vec<PublishedUncommittedBlock>> {
+        let _guard = self.lock.lock().await;
+
         let res: Vec<PublishedUncommittedBlockRow> = sqlx::query_as(
             r#"
 SELECT file_id, block_hash, rank, `index`
@@ -300,7 +357,9 @@ SELECT file_id, block_hash, rank, `index`
         Ok(res)
     }
 
-    pub async fn insert_or_ignore_uncommitted_block(&self, item: &PublishedUncommittedBlock) -> anyhow::Result<()> {
+    pub async fn insert_or_ignore_uncommitted_block(&self, item: &PublishedUncommittedBlock) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         let row = PublishedUncommittedBlockRow::from(item)?;
         sqlx::query(
             r#"
@@ -318,7 +377,9 @@ INSERT OR IGNORE INTO uncommitted_blocks (file_id, block_hash, rank, `index`)
         Ok(())
     }
 
-    pub async fn delete_uncommitted_blocks_by_file_id(&self, file_id: &str) -> anyhow::Result<()> {
+    pub async fn delete_uncommitted_blocks_by_file_id(&self, file_id: &str) -> Result<()> {
+        let _guard = self.lock.lock().await;
+
         sqlx::query(
             r#"
 DELETE FROM uncommitted_blocks
@@ -344,7 +405,7 @@ struct PublishedCommittedFileRow {
 }
 
 impl PublishedCommittedFileRow {
-    pub fn into(self) -> anyhow::Result<PublishedCommittedFile> {
+    pub fn into(self) -> Result<PublishedCommittedFile> {
         Ok(PublishedCommittedFile {
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             file_name: self.file_name,
@@ -356,7 +417,7 @@ impl PublishedCommittedFileRow {
     }
 
     #[allow(unused)]
-    pub fn from(item: &PublishedCommittedFile) -> anyhow::Result<Self> {
+    pub fn from(item: &PublishedCommittedFile) -> Result<Self> {
         Ok(Self {
             root_hash: item.root_hash.to_string(),
             file_name: item.file_name.to_string(),
@@ -377,7 +438,7 @@ pub struct PublishedCommittedBlockRow {
 }
 
 impl PublishedCommittedBlockRow {
-    pub fn into(self) -> anyhow::Result<PublishedCommittedBlock> {
+    pub fn into(self) -> Result<PublishedCommittedBlock> {
         Ok(PublishedCommittedBlock {
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             block_hash: OmniHash::from_str(self.block_hash.as_str()).unwrap(),
@@ -387,7 +448,7 @@ impl PublishedCommittedBlockRow {
     }
 
     #[allow(unused)]
-    pub fn from(item: &PublishedCommittedBlock) -> anyhow::Result<Self> {
+    pub fn from(item: &PublishedCommittedBlock) -> Result<Self> {
         Ok(Self {
             root_hash: item.root_hash.to_string(),
             block_hash: item.block_hash.to_string(),
@@ -399,36 +460,45 @@ impl PublishedCommittedBlockRow {
 
 #[derive(sqlx::FromRow)]
 struct PublishedUncommittedFileRow {
-    id: String,
-    file_name: String,
-    block_size: u32,
-    attrs: Option<String>,
-    priority: i64,
-    created_at: NaiveDateTime,
-    updated_at: NaiveDateTime,
+    pub id: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub block_size: u32,
+    pub attrs: Option<String>,
+    pub priority: i64,
+    pub status: PublishedUncommittedFileStatus,
+    pub failed_reason: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 impl PublishedUncommittedFileRow {
-    pub fn into(self) -> anyhow::Result<PublishedUncommittedFile> {
+    pub fn into(self) -> Result<PublishedUncommittedFile> {
         Ok(PublishedUncommittedFile {
             id: self.id,
+            file_path: self.file_path,
             file_name: self.file_name,
             block_size: self.block_size,
             attrs: self.attrs,
             priority: self.priority,
+            status: self.status,
+            failed_reason: self.failed_reason,
             created_at: DateTime::from_naive_utc_and_offset(self.created_at, Utc),
             updated_at: DateTime::from_naive_utc_and_offset(self.updated_at, Utc),
         })
     }
 
     #[allow(unused)]
-    pub fn from(item: &PublishedUncommittedFile) -> anyhow::Result<Self> {
+    pub fn from(item: &PublishedUncommittedFile) -> Result<Self> {
         Ok(Self {
             id: item.id.to_string(),
+            file_path: item.file_path.to_string(),
             file_name: item.file_name.to_string(),
             block_size: item.block_size,
             attrs: item.attrs.as_ref().map(|n| n.to_string()),
             priority: item.priority,
+            status: item.status.clone(),
+            failed_reason: item.failed_reason.as_ref().map(|n| n.to_string()),
             created_at: item.created_at.naive_utc(),
             updated_at: item.updated_at.naive_utc(),
         })
@@ -444,7 +514,7 @@ pub struct PublishedUncommittedBlockRow {
 }
 
 impl PublishedUncommittedBlockRow {
-    pub fn into(self) -> anyhow::Result<PublishedUncommittedBlock> {
+    pub fn into(self) -> Result<PublishedUncommittedBlock> {
         Ok(PublishedUncommittedBlock {
             file_id: self.file_id,
             block_hash: OmniHash::from_str(self.block_hash.as_str()).unwrap(),
@@ -454,7 +524,7 @@ impl PublishedUncommittedBlockRow {
     }
 
     #[allow(unused)]
-    pub fn from(item: &PublishedUncommittedBlock) -> anyhow::Result<Self> {
+    pub fn from(item: &PublishedUncommittedBlock) -> Result<Self> {
         Ok(Self {
             file_id: item.file_id.to_string(),
             block_hash: item.block_hash.to_string(),

@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use crate::Result;
+
 #[allow(dead_code)]
 pub struct KeyValueRocksdbStorage {
     rocksdb: rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>,
@@ -9,7 +11,7 @@ pub struct KeyValueRocksdbStorage {
 
 #[allow(dead_code)]
 impl KeyValueRocksdbStorage {
-    pub fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut opts = rocksdb::Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
@@ -20,34 +22,34 @@ impl KeyValueRocksdbStorage {
         Ok(Self { rocksdb: db })
     }
 
-    pub fn get_keys(&self) -> anyhow::Result<BlobStorageKeyIterator> {
+    pub fn get_keys(&self) -> Result<BlobStorageKeyIterator> {
         let mut iter = self.rocksdb.raw_iterator();
         iter.seek_to_first();
         let iter = BlobStorageKeyIterator::new(iter);
         Ok(iter)
     }
 
-    pub fn put_value(&self, key: &[u8], value: &[u8]) -> anyhow::Result<()> {
+    pub fn put_value(&self, key: &[u8], value: &[u8]) -> Result<()> {
         self.rocksdb.put(key, value)?;
         Ok(())
     }
 
-    pub fn get_value(&self, key: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
+    pub fn get_value(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         let value = self.rocksdb.get(key)?;
         Ok(value)
     }
 
-    pub fn delete(&self, key: &[u8]) -> anyhow::Result<()> {
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
         self.rocksdb.delete(key)?;
         Ok(())
     }
 
-    pub fn flush(&self) -> anyhow::Result<()> {
+    pub fn flush(&self) -> Result<()> {
         self.rocksdb.flush()?;
         Ok(())
     }
 
-    pub fn destroy<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
+    pub fn destroy<P: AsRef<Path>>(path: P) -> Result<()> {
         let opts = rocksdb::Options::default();
         rocksdb::DB::destroy(&opts, path)?;
         Ok(())
