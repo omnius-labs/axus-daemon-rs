@@ -13,12 +13,12 @@ use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{
         connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
         session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
         util::Terminable,
     },
+    prelude::*,
 };
 
 use super::{
@@ -99,8 +99,6 @@ impl Terminable for SessionAccepter {
         let mut task_acceptors = self.task_acceptors.lock().await;
         let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
         join_all(task_acceptors.iter().map(|task| task.terminate())).await;
-
-        Ok(())
     }
 }
 
@@ -155,8 +153,6 @@ impl Terminable for TaskAccepter {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 
@@ -221,7 +217,7 @@ impl Inner {
 
             Ok(())
         } else {
-            return Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)));
+            Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)))
         }
     }
 }

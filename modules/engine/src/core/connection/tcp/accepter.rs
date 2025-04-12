@@ -10,14 +10,14 @@ use omnius_core_base::net::Reachable;
 use omnius_core_omnikit::model::OmniAddr;
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{connection::FramedStream, util::Terminable},
+    prelude::*,
 };
 
 use super::UpnpClient;
 
 #[async_trait]
-pub trait ConnectionTcpAccepter {
+pub trait ConnectionTcpAccepter: Terminable {
     async fn accept(&self) -> Result<(FramedStream, SocketAddr)>;
     async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>>;
 }

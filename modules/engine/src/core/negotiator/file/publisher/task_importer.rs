@@ -23,11 +23,11 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 
 use crate::{
-    Result,
     core::{
         storage::KeyValueFileStorage,
         util::{Terminable, VolatileHashSet},
     },
+    prelude::*,
 };
 
 use super::{
@@ -53,6 +53,7 @@ impl TaskImporter {
         let inner = Inner {
             file_publisher_repo,
             blocks_storage,
+            notified: Arc::new(AtomicBool::new(false)),
             tsid_provider,
             clock,
         };
@@ -86,8 +87,6 @@ impl Terminable for TaskImporter {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 
@@ -109,6 +108,7 @@ impl Inner {
 
     async fn import_file(&self, file_id: &str) -> Result<()> {
         let uncommitted_file = self.file_publisher_repo.fetch_uncommitted_file(file_id).await?;
+        let uncommitted_file = uncommitted_file.ok_or_else(|| Error::new(ErrorKind::NotFound).message("Uncommitted file not found"))?;
 
         let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
 

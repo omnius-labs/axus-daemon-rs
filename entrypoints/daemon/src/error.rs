@@ -141,28 +141,6 @@ impl From<sqlx::Error> for Error {
     }
 }
 
-impl From<ed25519_dalek::pkcs8::Error> for Error {
-    fn from(e: ed25519_dalek::pkcs8::Error) -> Self {
-        Error::new(ErrorKind::InvalidFormat).message("pkcs8 error").source(e)
-    }
-}
-
-impl From<ed25519_dalek::pkcs8::spki::Error> for Error {
-    fn from(e: ed25519_dalek::pkcs8::spki::Error) -> Self {
-        Error::new(ErrorKind::InvalidFormat).message("pkcs8 spki error").source(e)
-    }
-}
-
-impl<T> From<nom::Err<nom::error::Error<T>>> for Error {
-    fn from(e: nom::Err<nom::error::Error<T>>) -> Error {
-        match e {
-            nom::Err::Incomplete(_) => Error::new(ErrorKind::InvalidFormat).message("nom incomplete"),
-            nom::Err::Error(e) => Error::new(ErrorKind::InvalidFormat).message(format!("nom error: {:?}", e.code)),
-            nom::Err::Failure(e) => Error::new(ErrorKind::InvalidFormat).message(format!("nom failure: {:?}", e.code)),
-        }
-    }
-}
-
 impl From<std::num::ParseIntError> for Error {
     fn from(e: std::num::ParseIntError) -> Error {
         Error::new(ErrorKind::InvalidFormat).message("int parse error").source(e)
@@ -193,17 +171,6 @@ impl From<omnius_core_rocketpack::Error> for Error {
     }
 }
 
-impl From<omnius_core_migration::Error> for Error {
-    fn from(e: omnius_core_migration::Error) -> Self {
-        match e.kind() {
-            omnius_core_migration::ErrorKind::IoError => Error::new(ErrorKind::IoError).message("I/O operation failed").source(e),
-            omnius_core_migration::ErrorKind::DatabaseError => Error::new(ErrorKind::TimeError).message("Database error").source(e),
-
-            omnius_core_migration::ErrorKind::InvalidFormat => Error::new(ErrorKind::InvalidFormat).message("Invalid format error").source(e),
-        }
-    }
-}
-
 impl From<omnius_core_omnikit::Error> for Error {
     fn from(e: omnius_core_omnikit::Error) -> Self {
         match e.kind() {
@@ -227,32 +194,8 @@ impl From<std::num::TryFromIntError> for Error {
     }
 }
 
-impl From<rupnp::Error> for Error {
-    fn from(e: rupnp::Error) -> Self {
-        Error::new(ErrorKind::UpnpError).message("UPnP operation failed").source(e)
-    }
-}
-
-impl From<local_ip_address::Error> for Error {
-    fn from(e: local_ip_address::Error) -> Self {
-        Error::new(ErrorKind::NetworkError).message("Failed to get local IP address").source(e)
-    }
-}
-
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Error::new(ErrorKind::HttpClientError).message("HTTP request failed").source(e)
-    }
-}
-
-impl From<rocksdb::Error> for Error {
-    fn from(e: rocksdb::Error) -> Self {
-        Error::new(ErrorKind::DatabaseError).message("RocksDB operation failed").source(e)
-    }
-}
-
-impl From<fast_socks5::SocksError> for Error {
-    fn from(value: fast_socks5::SocksError) -> Self {
-        todo!();
     }
 }

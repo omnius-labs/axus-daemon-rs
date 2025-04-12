@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use rupnp::ssdp::{SearchTarget, URN};
 use tokio_stream::StreamExt;
 
-use crate::{Error, ErrorKind, Result};
+use crate::prelude::*;
 
 static URNS: Lazy<Vec<URN>> = Lazy::new(|| {
     vec![

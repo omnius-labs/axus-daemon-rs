@@ -14,18 +14,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use omnius_core_base::{clock::Clock, ensure_err, sleeper::Sleeper};
-use omnius_core_rocketpack::{
-    Error as RocketPackError, ErrorKind as RocketPackErrorKind, Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter,
-};
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{
         connection::{FramedRecvExt as _, FramedSendExt as _},
         session::model::Session,
         util::Terminable,
     },
     model::{AssetKey, NodeProfile},
+    prelude::*,
 };
 
 use super::{HandshakeType, NodeFinderRepo, SessionStatus};
@@ -105,8 +102,6 @@ impl Terminable for TaskCommunicator {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 
@@ -174,7 +169,7 @@ impl Inner {
 
             Ok(received_profile_message.node_profile)
         } else {
-            return Err(Error::new(ErrorKind::UnsupportedVersion).message("Invalid version"));
+            Err(Error::new(ErrorKind::UnsupportedVersion).message("Invalid version"))
         }
     }
 
@@ -367,29 +362,29 @@ impl Default for DataMessage {
 
 impl RocketMessage for DataMessage {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> RocketPackResult<()> {
-        writer.put_u32(value.push_node_profiles.len().try_into()?);
+        writer.put_u32(value.push_node_profiles.len() as u32);
         for v in &value.push_node_profiles {
             NodeProfile::pack(writer, v, depth + 1)?;
         }
 
-        writer.put_u32(value.want_asset_keys.len().try_into()?);
+        writer.put_u32(value.want_asset_keys.len() as u32);
         for v in &value.want_asset_keys {
             AssetKey::pack(writer, v, depth + 1)?;
         }
 
-        writer.put_u32(value.give_asset_key_locations.len().try_into()?);
+        writer.put_u32(value.give_asset_key_locations.len() as u32);
         for (key, vs) in &value.give_asset_key_locations {
             AssetKey::pack(writer, key, depth + 1)?;
-            writer.put_u32(vs.len().try_into()?);
+            writer.put_u32(vs.len() as u32);
             for v in vs {
                 NodeProfile::pack(writer, v, depth + 1)?;
             }
         }
 
-        writer.put_u32(value.push_asset_key_locations.len().try_into()?);
+        writer.put_u32(value.push_asset_key_locations.len() as u32);
         for (key, vs) in &value.push_asset_key_locations {
             AssetKey::pack(writer, key, depth + 1)?;
-            writer.put_u32(vs.len().try_into()?);
+            writer.put_u32(vs.len() as u32);
             for v in vs {
                 NodeProfile::pack(writer, v, depth + 1)?;
             }
@@ -404,7 +399,7 @@ impl RocketMessage for DataMessage {
     {
         let get_too_large_err = || RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large");
 
-        let len = reader.get_u32()?.try_into()?;
+        let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
         let mut push_node_profiles = Vec::with_capacity(len);
@@ -412,7 +407,7 @@ impl RocketMessage for DataMessage {
             push_node_profiles.push(NodeProfile::unpack(reader, depth + 1)?);
         }
 
-        let len = reader.get_u32()?.try_into()?;
+        let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
         let mut want_asset_keys = Vec::with_capacity(len);
@@ -420,13 +415,13 @@ impl RocketMessage for DataMessage {
             want_asset_keys.push(AssetKey::unpack(reader, depth + 1)?);
         }
 
-        let len = reader.get_u32()?.try_into()?;
+        let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
         let mut give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
-            let len = reader.get_u32()?.try_into()?;
+            let len = reader.get_u32()? as usize;
             ensure_err!(len > 128, get_too_large_err);
 
             let mut vs = Vec::with_capacity(len);
@@ -436,13 +431,13 @@ impl RocketMessage for DataMessage {
             give_asset_key_locations.entry(key).or_default().extend(vs);
         }
 
-        let len = reader.get_u32()?.try_into()?;
+        let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
         let mut push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
         for _ in 0..len {
             let key = AssetKey::unpack(reader, depth + 1)?;
-            let len = reader.get_u32()?.try_into()?;
+            let len = reader.get_u32()? as usize;
             ensure_err!(len > 128, get_too_large_err);
 
             let mut vs = Vec::with_capacity(len);

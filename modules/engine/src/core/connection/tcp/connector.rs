@@ -3,7 +3,7 @@ use fast_socks5::client::Socks5Stream;
 use omnius_core_omnikit::model::OmniAddr;
 use tokio::net::TcpStream;
 
-use crate::core::connection::FramedStream;
+use crate::{core::connection::FramedStream, prelude::*};
 
 pub struct TcpProxyOption {
     pub typ: TcpProxyType,
@@ -17,7 +17,7 @@ pub enum TcpProxyType {
 
 #[async_trait]
 pub trait ConnectionTcpConnector {
-    async fn connect(&self, addr: &OmniAddr) -> anyhow::Result<FramedStream>;
+    async fn connect(&self, addr: &OmniAddr) -> Result<FramedStream>;
 }
 
 pub struct ConnectionTcpConnectorImpl {
@@ -25,14 +25,14 @@ pub struct ConnectionTcpConnectorImpl {
 }
 
 impl ConnectionTcpConnectorImpl {
-    pub async fn new(proxy_option: TcpProxyOption) -> anyhow::Result<Self> {
+    pub async fn new(proxy_option: TcpProxyOption) -> Result<Self> {
         Ok(Self { proxy_option })
     }
 }
 
 #[async_trait]
 impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
-    async fn connect(&self, addr: &OmniAddr) -> anyhow::Result<FramedStream> {
+    async fn connect(&self, addr: &OmniAddr) -> Result<FramedStream> {
         match self.proxy_option.typ {
             TcpProxyType::None => {
                 let socket_addr = addr.parse_tcp_ip()?;
@@ -51,7 +51,7 @@ impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
                     let stream = FramedStream::new(reader, writer);
                     return Ok(stream);
                 }
-                anyhow::bail!("failed to connect by socks5: {:?}", addr);
+                return Err(Error::new(ErrorKind::NetworkError).message(format!("failed to connect by socks5: {:?}", addr)));
             }
         }
     }

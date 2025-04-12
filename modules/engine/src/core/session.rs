@@ -20,6 +20,7 @@ mod tests {
     use crate::core::{
         connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
         session::{SessionAccepter, SessionConnector, model::SessionType},
+        util::Terminable,
     };
 
     #[tokio::test]
@@ -61,8 +62,8 @@ mod tests {
 
         println!("{}", text.value);
 
-        session_accepter.terminate().await?;
-        tcp_accepter.terminate().await?;
+        session_accepter.terminate().await;
+        tcp_accepter.terminate().await;
 
         Ok(())
     }

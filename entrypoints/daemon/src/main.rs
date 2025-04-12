@@ -5,8 +5,18 @@ use shared::{AppConfig, AppInfo, AppState};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+mod error;
 mod interface;
+mod prelude;
 mod shared;
+
+mod result {
+    #[allow(unused)]
+    pub type Result<T> = std::result::Result<T, crate::error::Error>;
+}
+
+pub use error::*;
+pub use result::*;
 
 const APP_NAME: &str = "axus-daemon";
 

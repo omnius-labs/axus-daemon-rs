@@ -11,13 +11,13 @@ use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
-    Result,
     core::{
         connection::{ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl},
         session::{SessionAccepter, SessionConnector, model::Session},
         util::{FnHub, Terminable, VolatileHashSet},
     },
     model::{AssetKey, NodeProfile},
+    prelude::*,
 };
 
 use super::{HandshakeType, NodeFinderRepo, NodeProfileFetcher, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
@@ -183,21 +183,19 @@ impl Terminable for NodeFinder {
         {
             let mut task_computer = self.task_computer.lock().await;
             if let Some(task_computer) = task_computer.take() {
-                task_computer.terminate().await?;
+                task_computer.terminate().await;
             }
         }
 
         {
             let mut task_communicator = self.task_communicator.lock().await;
             if let Some(task_communicator) = task_communicator.take() {
-                task_communicator.terminate().await?;
+                task_communicator.terminate().await;
             }
         }
 
-        self.session_accepter.terminate().await?;
-        self.tcp_accepter.terminate().await?;
-
-        Ok(())
+        self.session_accepter.terminate().await;
+        self.tcp_accepter.terminate().await;
     }
 }
 
@@ -263,8 +261,8 @@ mod tests {
         }
         info!("done");
 
-        nf1.terminate().await?;
-        nf2.terminate().await?;
+        nf1.terminate().await;
+        nf2.terminate().await;
 
         Ok(())
     }

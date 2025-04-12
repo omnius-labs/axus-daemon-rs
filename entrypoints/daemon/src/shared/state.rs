@@ -1,4 +1,4 @@
-use super::{info::AppInfo, AppConfig};
+use super::{AppConfig, info::AppInfo};
 
 pub struct AppState {
     pub info: AppInfo,

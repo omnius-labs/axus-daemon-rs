@@ -18,7 +18,6 @@ use tracing::warn;
 use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{
         session::{
             SessionConnector,
@@ -27,6 +26,7 @@ use crate::{
         util::{Terminable, VolatileHashSet},
     },
     model::NodeProfile,
+    prelude::*,
 };
 
 use super::{HandshakeType, NodeFinderOption, NodeFinderRepo, SessionStatus};
@@ -86,8 +86,6 @@ impl Terminable for TaskConnector {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 

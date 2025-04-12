@@ -46,6 +46,7 @@ serial_test = { workspace = true }
 toml = { workspace = true }
 tempfile = { workspace = true }
 clap = { workspace = true }
+backtrace = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

@@ -3,9 +3,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use omnius_core_omnikit::model::OmniCert;
-use omnius_core_rocketpack::{
-    Error as RocketPackError, ErrorKind as RocketPackErrorKind, Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter,
-};
+
+use crate::prelude::*;
 
 bitflags! {
     #[derive(Debug, PartialEq, Eq)]
@@ -53,7 +52,7 @@ impl RocketMessage for V1ChallengeMessage {
     where
         Self: Sized,
     {
-        let nonce: [u8; 32] = reader.get_bytes(32)?.try_into()?;
+        let nonce: [u8; 32] = reader.get_bytes(32)?.as_slice().try_into()?;
 
         Ok(Self { nonce })
     }

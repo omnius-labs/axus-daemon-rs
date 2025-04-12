@@ -8,8 +8,7 @@ use sqlx::{Sqlite, sqlite::SqlitePool};
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
-use crate::{Error, ErrorKind};
-use crate::{Result, core::util::UriConverter, model::NodeProfile};
+use crate::{core::util::UriConverter, model::NodeProfile, prelude::*};
 
 pub struct NodeFinderRepo {
     db: Arc<SqlitePool>,

@@ -10,7 +10,7 @@ use tokio::{fs::create_dir_all, sync::Mutex};
 
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
-use crate::{Error, ErrorKind, Result};
+use crate::prelude::*;
 
 pub struct KeyValueFileStorage {
     dir_path: PathBuf,

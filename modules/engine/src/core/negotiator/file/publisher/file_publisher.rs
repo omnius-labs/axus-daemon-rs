@@ -52,11 +52,9 @@ impl Terminable for FilePublisher {
         {
             let mut task_importer = self.task_importer.lock().await;
             if let Some(task_importer) = task_importer.take() {
-                task_importer.terminate().await?;
+                task_importer.terminate().await;
             }
         }
-
-        Ok(())
     }
 }
 

@@ -2,6 +2,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::prelude::*;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
     pub listen_addr: String,
@@ -15,6 +17,7 @@ struct AppConfigToml {
 impl AppConfig {
     pub async fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path
+            .as_ref()
             .to_str()
             .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
 

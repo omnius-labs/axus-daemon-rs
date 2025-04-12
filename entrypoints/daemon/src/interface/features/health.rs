@@ -1,9 +1,9 @@
 use omnius_core_omnikit::service::remoting::OmniRemotingDefaultErrorMessage;
 use omnius_core_rocketpack::{EmptyRocketMessage, RocketMessage, RocketMessageReader, RocketMessageWriter};
 
-use crate::shared::AppState;
+use crate::{prelude::*, shared::AppState};
 
-pub async fn health(state: &AppState, _: EmptyRocketMessage) -> Result<HealthResponse, OmniRemotingDefaultErrorMessage> {
+pub async fn health(state: &AppState, _: EmptyRocketMessage) -> std::result::Result<HealthResponse, OmniRemotingDefaultErrorMessage> {
     let res = HealthResponse {
         git_tag: state.info.git_tag.to_string(),
     };
@@ -16,13 +16,13 @@ pub struct HealthResponse {
 }
 
 impl RocketMessage for HealthResponse {
-    fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> anyhow::Result<()> {
+    fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> RocketPackResult<()> {
         writer.put_str(&value.git_tag);
 
         Ok(())
     }
 
-    fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> anyhow::Result<Self>
+    fn unpack(reader: &mut RocketMessageReader, _depth: u32) -> RocketPackResult<Self>
     where
         Self: Sized,
     {

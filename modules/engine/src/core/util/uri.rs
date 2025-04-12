@@ -1,4 +1,4 @@
-use crate::{Error, ErrorKind, model::NodeProfile};
+use crate::{model::NodeProfile, prelude::*};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64};
 use crc::{CRC_32_ISCSI, Crc};
@@ -6,7 +6,7 @@ use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
 
-use crate::Result;
+use crate::prelude::*;
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -45,7 +45,7 @@ impl UriConverter {
 
         match version {
             1 => Self::decode_v1(text),
-            _ => Error::new(ErrorKind::UnsupportedVersion),
+            _ => Err(Error::new(ErrorKind::UnsupportedVersion)),
         }
     }
 
@@ -68,7 +68,7 @@ impl UriConverter {
             let text = text.split_once('/').unwrap().1;
             return Ok(text);
         }
-        return Err(Error::new(ErrorKind::InvalidFormat).message("invalid schema"));
+        Err(Error::new(ErrorKind::InvalidFormat).message("invalid schema"))
     }
 
     fn try_parse_version(text: &str) -> Result<(&str, u32)> {

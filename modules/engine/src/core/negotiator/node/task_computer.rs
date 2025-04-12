@@ -16,9 +16,9 @@ use tracing::warn;
 use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    Result,
     core::util::{FnExecutor, Kadex, Terminable},
     model::{AssetKey, NodeProfile},
+    prelude::*,
 };
 
 use super::{NodeFinderRepo, NodeProfileFetcher, SendingDataMessage, SessionStatus};
@@ -81,8 +81,6 @@ impl Terminable for TaskComputer {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use omnius_core_omnikit::service::connection::codec::{FramedRecv, FramedSend};
 use omnius_core_rocketpack::RocketMessage;
 
-use crate::Result;
+use crate::prelude::*;
 
 #[async_trait]
 pub trait FramedRecvExt: FramedRecv {

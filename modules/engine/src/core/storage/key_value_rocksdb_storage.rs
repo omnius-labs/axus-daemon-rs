@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::Result;
+use crate::prelude::*;
 
 #[allow(dead_code)]
 pub struct KeyValueRocksdbStorage {

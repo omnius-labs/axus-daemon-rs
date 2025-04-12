@@ -5,11 +5,11 @@ use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 use parking_lot::Mutex;
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{
         connection::{ConnectionTcpConnector, FramedRecvExt as _, FramedSendExt as _},
         session::message::{V1ChallengeMessage, V1SignatureMessage},
     },
+    prelude::*,
 };
 
 use super::{
@@ -82,7 +82,7 @@ impl SessionConnector {
 
             Ok(session)
         } else {
-            return Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)));
+            Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)))
         }
     }
 }

@@ -1,9 +1,8 @@
 use std::fmt;
 
 use omnius_core_omnikit::model::OmniAddr;
-use omnius_core_rocketpack::{
-    Error as RocketPackError, ErrorKind as RocketPackErrorKind, Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter,
-};
+
+use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeProfile {
@@ -22,7 +21,7 @@ impl RocketMessage for NodeProfile {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, _depth: u32) -> RocketPackResult<()> {
         writer.put_bytes(&value.id);
 
-        writer.put_u32(value.addrs.len().try_into()?);
+        writer.put_u32(value.addrs.len() as u32);
         for v in &value.addrs {
             writer.put_str(v.as_str());
         }
@@ -41,7 +40,7 @@ impl RocketMessage for NodeProfile {
             return Err(RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large"));
         }
 
-        let mut addrs = Vec::with_capacity(len.try_into()?);
+        let mut addrs = Vec::with_capacity(len as usize);
         for _ in 0..len {
             addrs.push(OmniAddr::new(reader.get_string(1024)?.as_str()));
         }

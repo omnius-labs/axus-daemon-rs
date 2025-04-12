@@ -11,7 +11,6 @@ use tracing::warn;
 use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    Error, ErrorKind, Result,
     core::{
         session::{
             SessionAccepter,
@@ -19,6 +18,7 @@ use crate::{
         },
         util::Terminable,
     },
+    prelude::*,
 };
 
 use super::{HandshakeType, NodeFinderOption, SessionStatus};
@@ -74,8 +74,6 @@ impl Terminable for TaskAccepter {
             join_handle.abort();
             let _ = join_handle.fuse().await;
         }
-
-        Ok(())
     }
 }
 
