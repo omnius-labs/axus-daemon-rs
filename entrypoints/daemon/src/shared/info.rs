@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::prelude::*;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppInfo {
     pub app_name: String,
@@ -7,7 +9,7 @@ pub struct AppInfo {
 }
 
 impl AppInfo {
-    pub fn new(app_name: &str) -> anyhow::Result<Self> {
+    pub fn new(app_name: &str) -> Result<Self> {
         let git_tag = option_env!("GIT_TAG").unwrap_or("unknown").to_string();
 
         Ok(Self {

@@ -15,7 +15,7 @@ struct AppConfigToml {
 }
 
 impl AppConfig {
-    pub async fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    pub async fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path
             .as_ref()
             .to_str()

@@ -11,7 +11,6 @@ pub enum ErrorKind {
     UpnpError,
     UnexpectedError,
     NetworkError,
-    InvalidOperation,
 
     InvalidFormat,
     EndOfStream,
@@ -33,9 +32,8 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::HttpClientError => write!(fmt, "http client error"),
             ErrorKind::CryptoError => write!(fmt, "crypto error"),
             ErrorKind::UpnpError => write!(fmt, "upnp error"),
-            ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
             ErrorKind::NetworkError => write!(fmt, "network error"),
-            ErrorKind::InvalidOperation => write!(fmt, "invalid operation"),
+            ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
 
             ErrorKind::InvalidFormat => write!(fmt, "invalid format"),
             ErrorKind::EndOfStream => write!(fmt, "end of stream"),
@@ -197,5 +195,11 @@ impl From<std::num::TryFromIntError> for Error {
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Error::new(ErrorKind::HttpClientError).message("HTTP request failed").source(e)
+    }
+}
+
+impl From<toml::de::Error> for Error {
+    fn from(e: toml::de::Error) -> Error {
+        Error::new(ErrorKind::SerdeError).message("failed to parse toml file").source(e)
     }
 }

@@ -15,7 +15,6 @@ omnius-core-base = { workspace = true }
 omnius-core-rocketpack = { workspace = true }
 omnius-core-omnikit = { workspace = true }
 
-anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -27,7 +26,6 @@ sqlx = { workspace = true }
 tower-http = { workspace = true }
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
-config = { workspace = true }
 ring = { workspace = true }
 hex = { workspace = true }
 urlencoding = { workspace = true }

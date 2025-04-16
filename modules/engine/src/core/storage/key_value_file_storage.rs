@@ -22,18 +22,14 @@ impl KeyValueFileStorage {
     pub async fn new<P: AsRef<Path>>(dir_path: P) -> Result<Self> {
         let dir_path = dir_path.as_ref().to_path_buf();
         let sqlite_path = dir_path.join("sqlite.db");
-        let sqlite_url = format!(
-            "sqlite:{}",
-            sqlite_path
-                .to_str()
-                .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?
-        );
 
-        if !Sqlite::database_exists(sqlite_url.as_str()).await.unwrap_or(false) {
-            Sqlite::create_database(sqlite_url.as_str()).await?;
-        }
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(sqlite_path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5));
 
-        let db = Arc::new(SqlitePool::connect(&sqlite_url).await?);
+        let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
 
         Ok(Self {

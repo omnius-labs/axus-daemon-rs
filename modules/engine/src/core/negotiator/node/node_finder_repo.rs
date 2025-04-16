@@ -21,13 +21,14 @@ impl NodeFinderRepo {
         let path = path
             .to_str()
             .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
-        let url = format!("sqlite:{}", path);
 
-        if !Sqlite::database_exists(url.as_str()).await.unwrap_or(false) {
-            Sqlite::create_database(url.as_str()).await?;
-        }
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5));
 
-        let db = Arc::new(SqlitePool::connect(&url).await?);
+        let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(db.as_ref()).await?;
 
         Ok(Self { db, clock })

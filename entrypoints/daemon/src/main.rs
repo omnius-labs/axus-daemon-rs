@@ -27,7 +27,7 @@ struct Opts {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     if cfg!(debug_assertions) {
         let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sqlx=off"));
         tracing_subscriber::fmt().with_env_filter(filter).with_target(false).init();
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
 
     let opts = Opts::parse();
     if !opts.config_path.is_file() {
-        anyhow::bail!("config file not found: {}", opts.config_path.to_string_lossy());
+        return Err(Error::new(ErrorKind::NotFound).message(format!("Config file not found: {}", opts.config_path.display())));
     }
 
     let conf = AppConfig::load(opts.config_path).await?;

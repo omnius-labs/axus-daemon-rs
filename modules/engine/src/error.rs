@@ -9,9 +9,8 @@ pub enum ErrorKind {
     HttpClientError,
     CryptoError,
     UpnpError,
-    UnexpectedError,
     NetworkError,
-    InvalidOperation,
+    UnexpectedError,
 
     InvalidFormat,
     EndOfStream,
@@ -33,9 +32,8 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::HttpClientError => write!(fmt, "http client error"),
             ErrorKind::CryptoError => write!(fmt, "crypto error"),
             ErrorKind::UpnpError => write!(fmt, "upnp error"),
-            ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
             ErrorKind::NetworkError => write!(fmt, "network error"),
-            ErrorKind::InvalidOperation => write!(fmt, "invalid operation"),
+            ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
 
             ErrorKind::InvalidFormat => write!(fmt, "invalid format"),
             ErrorKind::EndOfStream => write!(fmt, "end of stream"),
