@@ -16,7 +16,6 @@ use super::{PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommitte
 pub struct FilePublisherRepo {
     db: Arc<SqlitePool>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    lock: Mutex<()>,
 }
 
 #[allow(unused)]
@@ -36,11 +35,7 @@ impl FilePublisherRepo {
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
 
-        Ok(Self {
-            db,
-            clock,
-            lock: Mutex::new(()),
-        })
+        Ok(Self { db, clock })
     }
 
     async fn migrate(db: &SqlitePool) -> Result<()> {
@@ -98,8 +93,6 @@ CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_committed_blocks ON co
     }
 
     pub async fn contains_committed_file(&self, root_hash: &OmniHash) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -116,8 +109,6 @@ SELECT COUNT(1)
     }
 
     pub async fn fetch_committed_file(&self, root_hash: &OmniHash) -> Result<Option<PublishedCommittedFile>> {
-        let _guard = self.lock.lock().await;
-
         let res: Option<PublishedCommittedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
@@ -133,8 +124,6 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
     }
 
     pub async fn fetch_committed_files(&self) -> Result<Vec<PublishedCommittedFile>> {
-        let _guard = self.lock.lock().await;
-
         let res: Vec<PublishedCommittedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
@@ -149,8 +138,6 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
     }
 
     pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         let row = PublishedCommittedFileRow::from(item)?;
         sqlx::query(
             r#"
@@ -171,8 +158,6 @@ INSERT INTO committed_files (root_hash, file_name, block_size, attrs, created_at
     }
 
     pub async fn contains_committed_block(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -190,9 +175,9 @@ SELECT COUNT(1)
     }
 
     pub async fn insert_or_ignore_committed_blocks(&self, items: &[PublishedCommittedBlock]) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         const CHUNK_SIZE: i64 = 100;
+
+        let mut tx = self.db.begin().await?;
 
         for chunk in items.chunks(CHUNK_SIZE as usize) {
             let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
@@ -209,15 +194,15 @@ INSERT OR IGNORE INTO committed_blocks (root_hash, block_hash, rank, `index`)
                 b.push_bind(row.rank);
                 b.push_bind(row.index);
             });
-            query_builder.build().execute(self.db.as_ref()).await?;
+            query_builder.build().execute(&mut *tx).await?;
         }
+
+        tx.commit().await?;
 
         Ok(())
     }
 
     pub async fn contains_uncommitted_file(&self, id: &str) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -234,8 +219,6 @@ SELECT COUNT(1)
     }
 
     pub async fn fetch_uncommitted_file_next(&self) -> Result<Option<PublishedUncommittedFile>> {
-        let _guard = self.lock.lock().await;
-
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_path, file_name, block_size, attrs, priority, created_at, updated_at
@@ -251,8 +234,6 @@ SELECT id, file_path, file_name, block_size, attrs, priority, created_at, update
     }
 
     pub async fn fetch_uncommitted_file(&self, id: &str) -> Result<Option<PublishedUncommittedFile>> {
-        let _guard = self.lock.lock().await;
-
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_name, block_size, property, created_at, updated_at
@@ -268,8 +249,6 @@ SELECT id, file_name, block_size, property, created_at, updated_at
     }
 
     pub async fn fetch_uncommitted_files(&self) -> Result<Vec<PublishedUncommittedFile>> {
-        let _guard = self.lock.lock().await;
-
         let res: Vec<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_name, block_size, property, created_at, updated_at
@@ -284,8 +263,6 @@ SELECT id, file_name, block_size, property, created_at, updated_at
     }
 
     pub async fn insert_uncommitted_file(&self, item: &PublishedUncommittedFile) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         let row = PublishedUncommittedFileRow::from(item)?;
         sqlx::query(
             r#"
@@ -306,8 +283,6 @@ INSERT INTO uncommitted_files (id, file_name, block_size, attrs, created_at, upd
     }
 
     pub async fn delete_uncommitted_file(&self, id: &str) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         sqlx::query(
             r#"
 DELETE FROM uncommitted_files
@@ -322,8 +297,6 @@ DELETE FROM uncommitted_files
     }
 
     pub async fn contains_uncommitted_block(&self, file_id: &str, block_hash: &OmniHash) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let (res,): (i64,) = sqlx::query_as(
             r#"
 SELECT COUNT(1)
@@ -341,8 +314,6 @@ SELECT COUNT(1)
     }
 
     pub async fn fetch_uncommitted_blocks(&self, file_id: &str) -> Result<Vec<PublishedUncommittedBlock>> {
-        let _guard = self.lock.lock().await;
-
         let res: Vec<PublishedUncommittedBlockRow> = sqlx::query_as(
             r#"
 SELECT file_id, block_hash, rank, `index`
@@ -359,8 +330,6 @@ SELECT file_id, block_hash, rank, `index`
     }
 
     pub async fn insert_or_ignore_uncommitted_block(&self, item: &PublishedUncommittedBlock) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         let row = PublishedUncommittedBlockRow::from(item)?;
         sqlx::query(
             r#"
@@ -379,8 +348,6 @@ INSERT OR IGNORE INTO uncommitted_blocks (file_id, block_hash, rank, `index`)
     }
 
     pub async fn delete_uncommitted_blocks_by_file_id(&self, file_id: &str) -> Result<()> {
-        let _guard = self.lock.lock().await;
-
         sqlx::query(
             r#"
 DELETE FROM uncommitted_blocks

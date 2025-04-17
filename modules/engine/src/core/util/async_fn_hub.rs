@@ -1,17 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use parking_lot::Mutex;
 
-type FnBox<T, Args> = Box<dyn Fn(&Args) -> T + Send + Sync>;
+type AsyncFnBox<T, Args> = Box<dyn Fn(&Args) -> Pin<Box<dyn Future<Output = T> + Send>> + Sync>;
 
 #[allow(unused)]
-pub struct FnHub<T, Args> {
-    tasks: Arc<Mutex<HashMap<u32, FnBox<T, Args>>>>,
+pub struct AsyncFnHub<T, Args> {
+    tasks: Arc<Mutex<HashMap<u32, AsyncFnBox<T, Args>>>>,
     next_id: Arc<Mutex<u32>>,
 }
 
 #[allow(unused)]
-impl<T, Args> FnHub<T, Args> {
+impl<T, Args> AsyncFnHub<T, Args> {
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -33,7 +33,7 @@ impl<T, Args> FnHub<T, Args> {
     }
 }
 
-impl<T, Args> Default for FnHub<T, Args> {
+impl<T, Args> Default for AsyncFnHub<T, Args> {
     fn default() -> Self {
         Self::new()
     }
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn call_test() {
-        let hub = FnHub::<i32, ()>::new();
+        let hub = AsyncFnHub::<i32, ()>::new();
         let registrar = hub.listener();
         let _cookie = registrar.listen(|_| 42);
         assert_eq!(registrar.tasks.lock().len(), 1);
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn cookie_drop_test() {
-        let hub = FnHub::<i32, ()>::new();
+        let hub = AsyncFnHub::<i32, ()>::new();
         let registrar = hub.listener();
         {
             let _cookie = registrar.listen(|_| 42);

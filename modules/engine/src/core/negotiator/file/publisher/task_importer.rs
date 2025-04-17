@@ -17,6 +17,7 @@ use tokio::{
     sync::{Mutex as TokioMutex, Notify, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
@@ -25,7 +26,7 @@ use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 use crate::{
     core::{
         storage::KeyValueFileStorage,
-        util::{Terminable, VolatileHashSet},
+        util::{AsyncFnHub, Terminable, VolatileHashSet},
     },
     prelude::*,
 };
@@ -53,7 +54,6 @@ impl TaskImporter {
         let inner = Inner {
             file_publisher_repo,
             blocks_storage,
-            notified: Arc::new(AtomicBool::new(false)),
             tsid_provider,
             clock,
         };
@@ -94,28 +94,39 @@ impl Terminable for TaskImporter {
 struct Inner {
     file_publisher_repo: Arc<FilePublisherRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
-    notified: Arc<AtomicBool>,
+    update_notify_fn: Arc<AsyncFnHub<(), ()>>,
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
 impl Inner {
     async fn import(&self) -> Result<()> {
-        let file_id = self.file_publisher_repo.fetch_uncommitted_file_next().await?;
-
         Ok(())
     }
 
-    async fn import_file(&self, file_id: &str) -> Result<()> {
-        let uncommitted_file = self.file_publisher_repo.fetch_uncommitted_file(file_id).await?;
-        let uncommitted_file = uncommitted_file.ok_or_else(|| Error::new(ErrorKind::NotFound).message("Uncommitted file not found"))?;
+    async fn import_sub(&self) -> Result<()> {
+        let uncommitted_file = self
+            .file_publisher_repo
+            .fetch_uncommitted_file_next()
+            .await?
+            .ok_or_else(|| Error::new(ErrorKind::NotFound).message("Uncommitted file not found"))?;
+
+        // let ct = CancellationToken::new();
+
+        // let fn_handle = self.update_notify_fn.registrar().register(|_| {
+        //     if let Ok(exists) = self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
+        //         if exists.is_none() {
+        //             ct.cancel();
+        //         }
+        //     }
+        // });
 
         let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
 
         let mut all_uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();
         let mut current_block_hashes: Vec<OmniHash> = Vec::new();
 
-        let mut uncommitted_blocks = self.import_bytes(file_id, &mut file, uncommitted_file.block_size, 0).await?;
+        let mut uncommitted_blocks = self.import_bytes(&uncommitted_file.id, &mut file, uncommitted_file.block_size, 0).await?;
         all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
         current_block_hashes.extend(uncommitted_blocks.iter().map(|block| block.block_hash.clone()));
 
@@ -131,7 +142,9 @@ impl Inner {
             let cursor = Cursor::new(bytes_slice);
             let mut reader = BufReader::new(cursor);
 
-            uncommitted_blocks = self.import_bytes(file_id, &mut reader, uncommitted_file.block_size, depth).await?;
+            uncommitted_blocks = self
+                .import_bytes(&uncommitted_file.id, &mut reader, uncommitted_file.block_size, depth)
+                .await?;
             all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
             current_block_hashes = uncommitted_blocks.iter().map(|block| block.block_hash.clone()).collect();
 
@@ -156,12 +169,14 @@ impl Inner {
 
             self.file_publisher_repo.insert_committed_file(&new_committed_file).await?;
 
-            for uncommitted_block in self.file_publisher_repo.fetch_uncommitted_blocks(file_id).await? {
-                let path = gen_uncommitted_block_path(file_id, &uncommitted_block.block_hash);
+            for uncommitted_block in self.file_publisher_repo.fetch_uncommitted_blocks(&uncommitted_file.id).await? {
+                let path = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
                 self.blocks_storage.delete_key(path.as_str()).await?;
             }
 
-            self.file_publisher_repo.delete_uncommitted_blocks_by_file_id(file_id).await?;
+            self.file_publisher_repo
+                .delete_uncommitted_blocks_by_file_id(&uncommitted_file.id)
+                .await?;
 
             return Ok(());
         }
@@ -187,7 +202,7 @@ impl Inner {
             .collect::<Vec<_>>();
 
         for uncommitted_block in all_uncommitted_blocks {
-            let old_key = gen_uncommitted_block_path(file_id, &uncommitted_block.block_hash);
+            let old_key = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
             let new_key = gen_committed_block_path(&root_hash, &uncommitted_block.block_hash);
             self.blocks_storage.rename_key(old_key.as_str(), new_key.as_str()).await?;
         }
@@ -195,8 +210,10 @@ impl Inner {
         self.file_publisher_repo.insert_committed_file(&committed_file).await?;
         self.file_publisher_repo.insert_or_ignore_committed_blocks(&committed_blocks).await?;
 
-        self.file_publisher_repo.delete_uncommitted_file(file_id).await?;
-        self.file_publisher_repo.delete_uncommitted_blocks_by_file_id(file_id).await?;
+        self.file_publisher_repo.delete_uncommitted_file(&uncommitted_file.id).await?;
+        self.file_publisher_repo
+            .delete_uncommitted_blocks_by_file_id(&uncommitted_file.id)
+            .await?;
 
         Ok(())
     }

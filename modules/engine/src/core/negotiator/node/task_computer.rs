@@ -16,7 +16,7 @@ use tracing::warn;
 use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    core::util::{FnExecutor, Kadex, Terminable},
+    core::util::{FnCaller, Kadex, Terminable},
     model::{AssetKey, NodeProfile},
     prelude::*,
 };
@@ -36,8 +36,8 @@ impl TaskComputer {
         node_profile_repo: Arc<NodeFinderRepo>,
         node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
-        get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+        get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
+        get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Self {
         let inner = Inner {
@@ -90,8 +90,8 @@ struct Inner {
     node_profile_repo: Arc<NodeFinderRepo>,
     node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    get_want_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
-    get_push_asset_keys_fn: FnExecutor<Vec<AssetKey>, ()>,
+    get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
+    get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
 }
 
 impl Inner {
@@ -114,8 +114,8 @@ impl Inner {
         let my_node_profile = Arc::new(self.my_node_profile.lock().clone());
         let cloud_node_profile: Vec<Arc<NodeProfile>> = self.node_profile_repo.fetch_node_profiles().await?.into_iter().map(Arc::new).collect();
 
-        let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self.get_want_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
-        let my_get_push_asset_keys: HashSet<Arc<AssetKey>> = self.get_push_asset_keys_fn.execute(&()).into_iter().flatten().map(Arc::new).collect();
+        let my_get_want_asset_keys: HashSet<Arc<AssetKey>> = self.get_want_asset_keys_fn.call(&()).into_iter().flatten().map(Arc::new).collect();
+        let my_get_push_asset_keys: HashSet<Arc<AssetKey>> = self.get_push_asset_keys_fn.call(&()).into_iter().flatten().map(Arc::new).collect();
 
         let mut received_data_map: HashMap<Vec<u8>, ReceivedTempDataMessage> = HashMap::new();
         {

@@ -14,7 +14,7 @@ use crate::{
     core::{
         connection::{ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl},
         session::{SessionAccepter, SessionConnector, model::Session},
-        util::{FnHub, Terminable, VolatileHashSet},
+        util::{AsyncFnHub, Terminable, VolatileHashSet},
     },
     model::{AssetKey, NodeProfile},
     prelude::*,
@@ -39,8 +39,8 @@ pub struct NodeFinder {
     session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
-    get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
-    get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
+    get_want_asset_keys_fn: Arc<AsyncFnHub<Vec<AssetKey>, ()>>,
+    get_push_asset_keys_fn: Arc<AsyncFnHub<Vec<AssetKey>, ()>>,
 
     task_connectors: Arc<TokioMutex<Vec<TaskConnector>>>,
     task_acceptors: Arc<TokioMutex<Vec<TaskAccepter>>>,
@@ -89,8 +89,8 @@ impl NodeFinder {
             session_sender: Arc::new(TokioMutex::new(tx)),
             sessions: Arc::new(TokioRwLock::new(HashMap::new())),
             connected_node_profiles: Arc::new(Mutex::new(VolatileHashSet::new(Duration::seconds(180), clock))),
-            get_want_asset_keys_fn: Arc::new(FnHub::new()),
-            get_push_asset_keys_fn: Arc::new(FnHub::new()),
+            get_want_asset_keys_fn: Arc::new(AsyncFnHub::new()),
+            get_push_asset_keys_fn: Arc::new(AsyncFnHub::new()),
 
             task_connectors: Arc::new(TokioMutex::new(Vec::new())),
             task_acceptors: Arc::new(TokioMutex::new(Vec::new())),
@@ -145,8 +145,8 @@ impl NodeFinder {
             self.node_profile_repo.clone(),
             self.node_profile_fetcher.clone(),
             self.sessions.clone(),
-            self.get_want_asset_keys_fn.executor(),
-            self.get_push_asset_keys_fn.executor(),
+            self.get_want_asset_keys_fn.caller(),
+            self.get_push_asset_keys_fn.caller(),
             self.sleeper.clone(),
         );
         task.run().await;
