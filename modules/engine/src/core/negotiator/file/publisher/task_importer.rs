@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::FutureExt;
+use futures::FutureExt as _;
 use omnius_core_rocketpack::RocketMessage;
 use parking_lot::Mutex;
 use rand::{SeedableRng, seq::SliceRandom};
@@ -17,6 +17,7 @@ use tokio::{
     sync::{Mutex as TokioMutex, Notify, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
+use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -41,11 +42,19 @@ use super::{
 pub struct TaskImporter {
     file_publisher_repo: Arc<FilePublisherRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
+
+    event_sender: tokio::sync::mpsc::UnboundedSender<TaskImporterEvent>,
+    importing_file_id: Arc<Mutex<Option<String>>>,
+
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
-    import_cancel_sender: tokio::sync::watch::Sender<()>,
+
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
+}
+
+enum TaskImporterEvent {
+    UncommittedFileDeleted { file_id: String },
 }
 
 #[async_trait]
@@ -62,31 +71,42 @@ impl TaskImporter {
     pub async fn new(
         file_publisher_repo: Arc<FilePublisherRepo>,
         blocks_storage: Arc<KeyValueFileStorage>,
+
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
-        let (import_cancel_sender, import_cancel_receiver) = tokio::sync::watch::channel(());
+        let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel::<TaskImporterEvent>();
 
         let v = Arc::new(Self {
             file_publisher_repo,
             blocks_storage,
+
+            importing_file_id: Arc::new(Mutex::new(None)),
+            event_sender,
+
             tsid_provider,
             clock,
             sleeper,
-            import_cancel_sender,
+
             join_handle: Arc::new(TokioMutex::new(None)),
         });
-        let join_handle = v.clone().start(import_cancel_receiver).await?;
+        let join_handle = v.clone().start(event_receiver).await?;
         *v.join_handle.lock().await = Some(join_handle);
 
         Ok(v)
     }
 
-    async fn start(self: Arc<Self>, mut cancel_rx: tokio::sync::watch::Receiver<()>) -> Result<JoinHandle<()>> {
-        Ok(tokio::spawn(async move {
-            let mut current_file_id: Option<String> = None;
+    async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<TaskImporterEvent>) -> Result<JoinHandle<()>> {
+        let importing_file_id_for_filter = self.importing_file_id.clone();
+        let mut events = UnboundedReceiverStream::new(events).filter(move |v| match v {
+            TaskImporterEvent::UncommittedFileDeleted { file_id } => {
+                let current_file_id = importing_file_id_for_filter.lock();
+                current_file_id.as_ref() == Some(file_id)
+            }
+        });
 
+        Ok(tokio::spawn(async move {
             loop {
                 let callback = async {
                     self.sleeper.sleep(std::time::Duration::from_secs(1)).await;
@@ -98,39 +118,35 @@ impl TaskImporter {
                             return;
                         }
                     };
-
                     let Some(uncommitted_file) = uncommitted_file else {
                         return;
                     };
 
-                    current_file_id = Some(uncommitted_file.id.clone());
-                    let result = self.import(uncommitted_file).await;
+                    *self.importing_file_id.lock() = Some(uncommitted_file.id.clone());
 
+                    // importing_file_idにセットする前に削除される可能性を考慮して、再度取得する
+                    let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
+                        Ok(uncommitted_file) => uncommitted_file,
+                        Err(e) => {
+                            warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
+                            return;
+                        }
+                    };
+                    let Some(uncommitted_file) = uncommitted_file else {
+                        return;
+                    };
+
+                    let result = self.import(uncommitted_file).await;
                     if let Err(e) = result {
                         warn!(error_message = e.to_string(), "import failed",);
                     }
                 };
 
-                let exists = async |file_id: &str| match self.file_publisher_repo.fetch_uncommitted_file(file_id).await {
-                    Ok(v) => v.is_some(),
-                    Err(e) => {
-                        warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
-                        false
-                    }
-                };
-
                 tokio::select! {
                     _ = callback => {}
-                    _ = cancel_rx.changed() => {
-                        let Some(current_file_id) = current_file_id.as_ref() else {
-                            continue;
-                        };
-
-                        if !exists(current_file_id.as_str()).await {
-                            break;
-                        }
-
-                        continue;
+                    Some(_) = events.next() => {
+                        warn!("Import task interrupted: Uncommitted file deleted while potentially being imported.");
+                        *self.importing_file_id.lock() = None;
                     }
                 };
             }
