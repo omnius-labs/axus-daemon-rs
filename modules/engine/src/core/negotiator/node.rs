@@ -8,7 +8,7 @@ mod task_computer;
 mod task_connector;
 
 pub use node_finder::*;
-use node_finder_repo::*;
+pub use node_finder_repo::*;
 pub use node_profile_fetcher::*;
 use session_status::*;
 use task_accepter::*;

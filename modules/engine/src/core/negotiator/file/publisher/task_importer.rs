@@ -25,8 +25,9 @@ use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 
 use crate::{
     core::{
+        negotiator::file::model::PublishedUncommittedFile,
         storage::KeyValueFileStorage,
-        util::{AsyncFnHub, Terminable, VolatileHashSet},
+        util::{Terminable, VolatileHashSet},
     },
     prelude::*,
 };
@@ -38,46 +39,13 @@ use super::{
 
 #[derive(Clone)]
 pub struct TaskImporter {
-    inner: Inner,
+    file_publisher_repo: Arc<FilePublisherRepo>,
+    blocks_storage: Arc<KeyValueFileStorage>,
+    tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
+    import_cancel_sender: tokio::sync::watch::Sender<()>,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
-}
-
-impl TaskImporter {
-    pub fn new(
-        file_publisher_repo: Arc<FilePublisherRepo>,
-        blocks_storage: Arc<KeyValueFileStorage>,
-        tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> Self {
-        let inner = Inner {
-            file_publisher_repo,
-            blocks_storage,
-            tsid_provider,
-            clock,
-        };
-        Self {
-            inner,
-            sleeper,
-            join_handle: Arc::new(TokioMutex::new(None)),
-        }
-    }
-
-    pub async fn run(&self) {
-        let sleeper = self.sleeper.clone();
-        let inner = self.inner.clone();
-        let join_handle = tokio::spawn(async move {
-            loop {
-                sleeper.sleep(std::time::Duration::from_secs(1)).await;
-                let res = inner.import().await;
-                if let Err(e) = res {
-                    warn!(error_message = e.to_string(), "import failed");
-                }
-            }
-        });
-        *self.join_handle.lock().await = Some(join_handle);
-    }
 }
 
 #[async_trait]
@@ -90,37 +58,86 @@ impl Terminable for TaskImporter {
     }
 }
 
-#[derive(Clone)]
-struct Inner {
-    file_publisher_repo: Arc<FilePublisherRepo>,
-    blocks_storage: Arc<KeyValueFileStorage>,
-    update_notify_fn: Arc<AsyncFnHub<(), ()>>,
-    tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
-    clock: Arc<dyn Clock<Utc> + Send + Sync>,
-}
+impl TaskImporter {
+    pub async fn new(
+        file_publisher_repo: Arc<FilePublisherRepo>,
+        blocks_storage: Arc<KeyValueFileStorage>,
+        tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+    ) -> Result<Arc<Self>> {
+        let (import_cancel_sender, import_cancel_receiver) = tokio::sync::watch::channel(());
 
-impl Inner {
-    async fn import(&self) -> Result<()> {
-        Ok(())
+        let v = Arc::new(Self {
+            file_publisher_repo,
+            blocks_storage,
+            tsid_provider,
+            clock,
+            sleeper,
+            import_cancel_sender,
+            join_handle: Arc::new(TokioMutex::new(None)),
+        });
+        let join_handle = v.clone().start(import_cancel_receiver).await?;
+        *v.join_handle.lock().await = Some(join_handle);
+
+        Ok(v)
     }
 
-    async fn import_sub(&self) -> Result<()> {
-        let uncommitted_file = self
-            .file_publisher_repo
-            .fetch_uncommitted_file_next()
-            .await?
-            .ok_or_else(|| Error::new(ErrorKind::NotFound).message("Uncommitted file not found"))?;
+    async fn start(self: Arc<Self>, mut cancel_rx: tokio::sync::watch::Receiver<()>) -> Result<JoinHandle<()>> {
+        Ok(tokio::spawn(async move {
+            let mut current_file_id: Option<String> = None;
 
-        // let ct = CancellationToken::new();
+            loop {
+                let callback = async {
+                    self.sleeper.sleep(std::time::Duration::from_secs(1)).await;
 
-        // let fn_handle = self.update_notify_fn.registrar().register(|_| {
-        //     if let Ok(exists) = self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
-        //         if exists.is_none() {
-        //             ct.cancel();
-        //         }
-        //     }
-        // });
+                    let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file_next().await {
+                        Ok(uncommitted_file) => uncommitted_file,
+                        Err(e) => {
+                            warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
+                            return;
+                        }
+                    };
 
+                    let Some(uncommitted_file) = uncommitted_file else {
+                        return;
+                    };
+
+                    current_file_id = Some(uncommitted_file.id.clone());
+                    let result = self.import(uncommitted_file).await;
+
+                    if let Err(e) = result {
+                        warn!(error_message = e.to_string(), "import failed",);
+                    }
+                };
+
+                let exists = async |file_id: &str| match self.file_publisher_repo.fetch_uncommitted_file(file_id).await {
+                    Ok(v) => v.is_some(),
+                    Err(e) => {
+                        warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
+                        false
+                    }
+                };
+
+                tokio::select! {
+                    _ = callback => {}
+                    _ = cancel_rx.changed() => {
+                        let Some(current_file_id) = current_file_id.as_ref() else {
+                            continue;
+                        };
+
+                        if !exists(current_file_id.as_str()).await {
+                            break;
+                        }
+
+                        continue;
+                    }
+                };
+            }
+        }))
+    }
+
+    async fn import(&self, uncommitted_file: PublishedUncommittedFile) -> Result<()> {
         let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
 
         let mut all_uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();

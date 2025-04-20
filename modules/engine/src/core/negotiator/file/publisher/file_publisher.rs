@@ -15,7 +15,10 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 use omnius_core_rocketpack::RocketMessage;
 
-use crate::core::{storage::KeyValueFileStorage, util::Terminable};
+use crate::{
+    core::{storage::KeyValueFileStorage, util::Terminable},
+    prelude::*,
+};
 
 use super::{FilePublisherRepo, MerkleLayer, PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommittedBlock, TaskImporter};
 
@@ -28,21 +31,43 @@ pub struct FilePublisher {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
 
-    task_importer: Arc<TokioMutex<Option<TaskImporter>>>,
+    task_importer: Arc<TokioMutex<Option<Arc<TaskImporter>>>>,
 }
 
 #[allow(unused)]
 impl FilePublisher {
-    async fn run(&self) {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new(
+        file_publisher_repo: Arc<FilePublisherRepo>,
+        blocks_storage: Arc<KeyValueFileStorage>,
+        tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+    ) -> Result<Self> {
+        let result = Self {
+            file_publisher_repo,
+            blocks_storage,
+            tsid_provider,
+            clock,
+            sleeper,
+            task_importer: Arc::new(TokioMutex::new(None)),
+        };
+        result.run().await?;
+
+        Ok(result)
+    }
+    async fn run(&self) -> Result<()> {
         let task = TaskImporter::new(
             self.file_publisher_repo.clone(),
             self.blocks_storage.clone(),
             self.tsid_provider.clone(),
             self.clock.clone(),
             self.sleeper.clone(),
-        );
-        task.run().await;
+        )
+        .await?;
         self.task_importer.lock().await.replace(task);
+
+        Ok(())
     }
 }
 
