@@ -44,7 +44,7 @@ pub struct TaskImporter {
     blocks_storage: Arc<KeyValueFileStorage>,
 
     event_sender: tokio::sync::mpsc::UnboundedSender<TaskImporterEvent>,
-    importing_file_id: Arc<Mutex<Option<String>>>,
+    current_import_file_id: Arc<Mutex<Option<String>>>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -82,7 +82,7 @@ impl TaskImporter {
             file_publisher_repo,
             blocks_storage,
 
-            importing_file_id: Arc::new(Mutex::new(None)),
+            current_import_file_id: Arc::new(Mutex::new(None)),
             event_sender,
 
             tsid_provider,
@@ -98,10 +98,10 @@ impl TaskImporter {
     }
 
     async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<TaskImporterEvent>) -> Result<JoinHandle<()>> {
-        let importing_file_id_for_filter = self.importing_file_id.clone();
+        let current_import_file_id_for_filter = self.current_import_file_id.clone();
         let mut events = UnboundedReceiverStream::new(events).filter(move |v| match v {
             TaskImporterEvent::UncommittedFileDeleted { file_id } => {
-                let current_file_id = importing_file_id_for_filter.lock();
+                let current_file_id = current_import_file_id_for_filter.lock();
                 current_file_id.as_ref() == Some(file_id)
             }
         });
@@ -122,7 +122,7 @@ impl TaskImporter {
                         return;
                     };
 
-                    *self.importing_file_id.lock() = Some(uncommitted_file.id.clone());
+                    *self.current_import_file_id.lock() = Some(uncommitted_file.id.clone());
 
                     // importing_file_idにセットする前に削除される可能性を考慮して、再度取得する
                     let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
@@ -146,7 +146,7 @@ impl TaskImporter {
                     _ = callback => {}
                     Some(_) = events.next() => {
                         warn!("Import task interrupted: Uncommitted file deleted while potentially being imported.");
-                        *self.importing_file_id.lock() = None;
+                        *self.current_import_file_id.lock() = None;
                     }
                 };
             }
