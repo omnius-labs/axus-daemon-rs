@@ -7,6 +7,19 @@ use crate::{prelude::*, shared::AppState};
 
 use super::features;
 
+#[derive(Debug, Clone, strum::FromRepr)]
+enum FunctionId {
+    Health,
+
+    ConfigGet,
+    ConfigSet,
+
+    PublishedFile,
+
+    SubscribedFile,
+
+    SubscribedFileGet,
+}
 pub struct RpcServer;
 
 impl RpcServer {
@@ -20,12 +33,16 @@ impl RpcServer {
             let mut remoting_listener = OmniRemotingListener::<_, _, OmniRemotingDefaultErrorMessage>::new(reader, writer, 1024 * 1024);
             remoting_listener.handshake().await?;
 
-            match remoting_listener.function_id()? {
-                0 => remoting_listener.listen(async |p| features::health(&state, p).await).await?,
+            let function_id = remoting_listener.function_id()?;
+            let Some(function_id) = FunctionId::from_repr(function_id as usize) else {
+                warn!("unknown function id: {}", function_id);
+                continue;
+            };
+
+            match function_id {
+                FunctionId::Health => remoting_listener.listen_unary(async |p| features::health(&state, p).await).await?,
                 _ => warn!("not supported"),
             }
-
-            remoting_listener.close().await?;
         }
     }
 }

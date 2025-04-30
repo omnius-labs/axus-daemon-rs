@@ -1,11 +1,11 @@
 mod file_exchanger;
+mod file_publisher;
+mod file_subscriber;
 mod model;
-mod publisher;
 mod session_status;
-mod subscriber;
 
 pub use file_exchanger::*;
+use file_publisher::*;
+use file_subscriber::*;
 use model::*;
-use publisher::*;
 use session_status::*;
-use subscriber::*;

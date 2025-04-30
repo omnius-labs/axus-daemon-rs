@@ -1,49 +1,36 @@
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::io::Cursor;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::FutureExt as _;
-use omnius_core_rocketpack::RocketMessage;
 use parking_lot::Mutex;
-use rand::{SeedableRng, seq::SliceRandom};
-use rand_chacha::ChaCha20Rng;
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, BufReader},
-    sync::{Mutex as TokioMutex, Notify, RwLock as TokioRwLock, mpsc},
+    sync::Mutex as TokioMutex,
     task::JoinHandle,
 };
 use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
-use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
+use omnius_core_rocketpack::RocketMessage;
 
 use crate::{
-    core::{
-        negotiator::file::model::PublishedUncommittedFile,
-        storage::KeyValueFileStorage,
-        util::{Terminable, VolatileHashSet},
-    },
+    core::{negotiator::file::model::PublishedUncommittedFile, storage::KeyValueFileStorage, util::Terminable},
     prelude::*,
 };
 
-use super::{
-    FilePublisherRepo, MerkleLayer, PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommittedBlock, gen_committed_block_path,
-    gen_uncommitted_block_path,
-};
+use super::{FilePublisherRepo, MerkleLayer, PublishedCommittedBlock, PublishedCommittedFile, PublishedUncommittedBlock};
 
-#[derive(Clone)]
-pub struct TaskImporter {
+#[allow(unused)]
+pub struct FilePublisher {
     file_publisher_repo: Arc<FilePublisherRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
 
-    event_sender: tokio::sync::mpsc::UnboundedSender<TaskImporterEvent>,
+    event_sender: tokio::sync::mpsc::UnboundedSender<FilePublisherEvent>,
     current_import_file_id: Arc<Mutex<Option<String>>>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
@@ -53,12 +40,12 @@ pub struct TaskImporter {
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
 
-enum TaskImporterEvent {
+enum FilePublisherEvent {
     UncommittedFileDeleted { file_id: String },
 }
 
 #[async_trait]
-impl Terminable for TaskImporter {
+impl Terminable for FilePublisher {
     async fn terminate(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
@@ -67,7 +54,9 @@ impl Terminable for TaskImporter {
     }
 }
 
-impl TaskImporter {
+#[allow(unused)]
+impl FilePublisher {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         file_publisher_repo: Arc<FilePublisherRepo>,
         blocks_storage: Arc<KeyValueFileStorage>,
@@ -76,7 +65,7 @@ impl TaskImporter {
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
-        let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel::<TaskImporterEvent>();
+        let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel::<FilePublisherEvent>();
 
         let v = Arc::new(Self {
             file_publisher_repo,
@@ -91,22 +80,23 @@ impl TaskImporter {
 
             join_handle: Arc::new(TokioMutex::new(None)),
         });
-        let join_handle = v.clone().start(event_receiver).await?;
-        *v.join_handle.lock().await = Some(join_handle);
+        v.clone().start(event_receiver).await?;
 
         Ok(v)
     }
 
-    async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<TaskImporterEvent>) -> Result<JoinHandle<()>> {
-        let current_import_file_id_for_filter = self.current_import_file_id.clone();
+    async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<FilePublisherEvent>) -> Result<()> {
+        let current_import_file_id = self.current_import_file_id.clone();
         let mut events = UnboundedReceiverStream::new(events).filter(move |v| match v {
-            TaskImporterEvent::UncommittedFileDeleted { file_id } => {
-                let current_file_id = current_import_file_id_for_filter.lock();
+            FilePublisherEvent::UncommittedFileDeleted { file_id } => {
+                let current_file_id = current_import_file_id.lock();
                 current_file_id.as_ref() == Some(file_id)
             }
         });
 
-        Ok(tokio::spawn(async move {
+        let join_handle = self.join_handle.clone();
+
+        *join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
                 let callback = async {
                     self.sleeper.sleep(std::time::Duration::from_secs(1)).await;
@@ -150,7 +140,9 @@ impl TaskImporter {
                     }
                 };
             }
-        }))
+        }));
+
+        Ok(())
     }
 
     async fn import(&self, uncommitted_file: PublishedUncommittedFile) -> Result<()> {
@@ -203,7 +195,7 @@ impl TaskImporter {
             self.file_publisher_repo.insert_committed_file(&new_committed_file).await?;
 
             for uncommitted_block in self.file_publisher_repo.fetch_uncommitted_blocks(&uncommitted_file.id).await? {
-                let path = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
+                let path = Self::gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
                 self.blocks_storage.delete_key(path.as_str()).await?;
             }
 
@@ -235,8 +227,8 @@ impl TaskImporter {
             .collect::<Vec<_>>();
 
         for uncommitted_block in all_uncommitted_blocks {
-            let old_key = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
-            let new_key = gen_committed_block_path(&root_hash, &uncommitted_block.block_hash);
+            let old_key = Self::gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
+            let new_key = Self::gen_committed_block_path(&root_hash, &uncommitted_block.block_hash);
             self.blocks_storage.rename_key(old_key.as_str(), new_key.as_str()).await?;
         }
 
@@ -277,12 +269,20 @@ impl TaskImporter {
             self.file_publisher_repo.insert_or_ignore_uncommitted_block(&uncommitted_block).await?;
             uncommitted_blocks.push(uncommitted_block);
 
-            let path = gen_uncommitted_block_path(file_id, &block_hash);
+            let path = Self::gen_uncommitted_block_path(file_id, &block_hash);
             self.blocks_storage.put_value(path.as_str(), block).await?;
 
             index += 1;
         }
 
         Ok(uncommitted_blocks)
+    }
+
+    fn gen_uncommitted_block_path(id: &str, block_hash: &OmniHash) -> String {
+        format!("U/{}/{}", id, block_hash)
+    }
+
+    fn gen_committed_block_path(root_hash: &OmniHash, block_hash: &OmniHash) -> String {
+        format!("C/{}/{}", root_hash, block_hash)
     }
 }

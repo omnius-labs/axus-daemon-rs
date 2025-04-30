@@ -1,6 +1,6 @@
-mod file_subscriber;
+mod subscriber;
 
 #[allow(unused)]
 use super::*;
 #[allow(unused)]
-pub use file_subscriber::*;
+pub use subscriber::*;

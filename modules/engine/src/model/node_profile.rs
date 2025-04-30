@@ -1,5 +1,6 @@
 use std::fmt;
 
+use omnius_core_base::ensure_err;
 use omnius_core_omnikit::model::OmniAddr;
 
 use crate::prelude::*;
@@ -33,12 +34,12 @@ impl RocketMessage for NodeProfile {
     where
         Self: Sized,
     {
+        let get_too_large_err = || RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large");
+
         let id = reader.get_bytes(128)?;
 
         let len = reader.get_u32()?;
-        if len > 128 {
-            return Err(RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large"));
-        }
+        ensure_err!(len > 128, get_too_large_err);
 
         let mut addrs = Vec::with_capacity(len as usize);
         for _ in 0..len {
