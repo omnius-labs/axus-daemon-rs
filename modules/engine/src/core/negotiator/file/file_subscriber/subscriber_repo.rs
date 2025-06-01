@@ -13,13 +13,13 @@ use crate::{core::negotiator::file::model::PublishedUncommittedFileStatus, prelu
 use super::*;
 
 #[allow(unused)]
-pub struct FilePublisherRepo {
+pub struct FileSubscriberRepo {
     db: Arc<SqlitePool>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
 #[allow(unused)]
-impl FilePublisherRepo {
+impl FileSubscriberRepo {
     pub async fn new<P: AsRef<Path>>(dir_path: P, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
         let path = dir_path.as_ref().join("sqlite.db");
         let path = path

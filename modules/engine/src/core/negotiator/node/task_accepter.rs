@@ -21,50 +21,16 @@ use crate::{
     prelude::*,
 };
 
-use super::{HandshakeType, NodeFinderOption, SessionStatus};
+use super::*;
 
 #[derive(Clone)]
 pub struct TaskAccepter {
-    inner: Inner,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+    session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+    session_accepter: Arc<SessionAccepter>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
+    option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
-}
-
-impl TaskAccepter {
-    pub fn new(
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
-        session_accepter: Arc<SessionAccepter>,
-        option: NodeFinderOption,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> Self {
-        let inner = Inner {
-            sessions,
-            session_sender,
-            session_accepter,
-            option,
-        };
-        Self {
-            inner,
-            sleeper,
-            join_handle: Arc::new(TokioMutex::new(None)),
-        }
-    }
-
-    pub async fn run(&self) {
-        let sleeper = self.sleeper.clone();
-        let inner = self.inner.clone();
-        let join_handle = tokio::spawn(async move {
-            loop {
-                sleeper.sleep(std::time::Duration::from_secs(1)).await;
-                let res = inner.accept().await;
-                if let Err(e) = res {
-                    warn!("{:?}", e);
-                }
-            }
-        });
-        *self.join_handle.lock().await = Some(join_handle);
-    }
 }
 
 #[async_trait]
@@ -77,17 +43,44 @@ impl Terminable for TaskAccepter {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Clone)]
-struct Inner {
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
-    session_accepter: Arc<SessionAccepter>,
-    option: NodeFinderOption,
-}
+impl TaskAccepter {
+    pub async fn new(
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+        session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+        session_accepter: Arc<SessionAccepter>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+        option: NodeFinderOption,
+    ) -> Result<Arc<Self>> {
+        let v = Arc::new(Self {
+            sessions,
+            session_sender,
+            session_accepter,
+            sleeper,
+            option,
+            join_handle: Arc::new(TokioMutex::new(None)),
+        });
 
-#[allow(dead_code)]
-impl Inner {
+        v.clone().start().await?;
+
+        Ok(v)
+    }
+
+    async fn start(self: Arc<Self>) -> Result<()> {
+        let sleeper = self.sleeper.clone();
+        let join_handle = self.join_handle.clone();
+        *join_handle.lock().await = Some(tokio::spawn(async move {
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(1)).await;
+                let res = self.accept().await;
+                if let Err(e) = res {
+                    warn!("{:?}", e);
+                }
+            }
+        }));
+
+        Ok(())
+    }
+
     async fn accept(&self) -> Result<()> {
         let session_count = self
             .sessions

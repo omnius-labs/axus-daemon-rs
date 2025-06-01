@@ -23,6 +23,7 @@ pub enum PublishedUncommittedFileStatus {
     Processing,
     Completed,
     Failed,
+    Canceled,
 }
 
 impl sqlx::Type<sqlx::Sqlite> for PublishedUncommittedFileStatus {
@@ -42,6 +43,7 @@ impl sqlx::Encode<'_, sqlx::Sqlite> for PublishedUncommittedFileStatus {
             PublishedUncommittedFileStatus::Processing => "Processing",
             PublishedUncommittedFileStatus::Completed => "Completed",
             PublishedUncommittedFileStatus::Failed => "Failed",
+            PublishedUncommittedFileStatus::Canceled => "Canceled",
         };
         <&str as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(&s, buf)
     }
@@ -55,6 +57,7 @@ impl sqlx::Decode<'_, sqlx::Sqlite> for PublishedUncommittedFileStatus {
             "Processing" => Ok(PublishedUncommittedFileStatus::Processing),
             "Completed" => Ok(PublishedUncommittedFileStatus::Completed),
             "Failed" => Ok(PublishedUncommittedFileStatus::Failed),
+            "Canceled" => Ok(PublishedUncommittedFileStatus::Canceled),
             _ => Ok(PublishedUncommittedFileStatus::Unknown),
         }
     }

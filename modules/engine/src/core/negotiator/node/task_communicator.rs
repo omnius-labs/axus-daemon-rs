@@ -25,67 +25,20 @@ use crate::{
     prelude::*,
 };
 
-use super::{HandshakeType, NodeFinderRepo, SessionStatus};
+use super::*;
 
 #[derive(Clone)]
 pub struct TaskCommunicator {
+    my_node_profile: Arc<Mutex<NodeProfile>>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+    node_profile_repo: Arc<NodeFinderRepo>,
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
-    inner: Inner,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
+    sleeper: Arc<dyn Sleeper + Send + Sync>,
+    option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
     communicate_join_handles: Arc<TokioMutex<Vec<JoinHandle<()>>>>,
     cancellation_token: CancellationToken,
-}
-
-impl TaskCommunicator {
-    pub fn new(
-        my_node_profile: Arc<Mutex<NodeProfile>>,
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        node_profile_repo: Arc<NodeFinderRepo>,
-        session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> Self {
-        let cancellation_token = CancellationToken::new();
-        let inner = Inner {
-            my_node_profile,
-            sessions,
-            node_profile_repo,
-            clock,
-            sleeper,
-            cancellation_token: cancellation_token.clone(),
-        };
-        Self {
-            session_receiver,
-            inner,
-            join_handle: Arc::new(TokioMutex::new(None)),
-            communicate_join_handles: Arc::new(TokioMutex::new(vec![])),
-            cancellation_token,
-        }
-    }
-
-    pub async fn run(&self) {
-        let session_receiver = self.session_receiver.clone();
-        let inner = self.inner.clone();
-        let communicate_join_handles = self.communicate_join_handles.clone();
-        let join_handle = tokio::spawn(async move {
-            loop {
-                // 終了済みのタスクを削除
-                communicate_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
-
-                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
-                    let inner = inner.clone();
-                    let join_handle = tokio::spawn(async move {
-                        let res = inner.communicate(handshake_type, session).await;
-                        if let Err(e) = res {
-                            warn!(error_message = e.to_string(), "communicate failed");
-                        }
-                    });
-                    communicate_join_handles.lock().await.push(join_handle);
-                }
-            }
-        });
-        *self.join_handle.lock().await = Some(join_handle);
-    }
 }
 
 #[async_trait]
@@ -105,17 +58,61 @@ impl Terminable for TaskCommunicator {
     }
 }
 
-#[derive(Clone)]
-struct Inner {
-    my_node_profile: Arc<Mutex<NodeProfile>>,
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    node_profile_repo: Arc<NodeFinderRepo>,
-    clock: Arc<dyn Clock<Utc> + Send + Sync>,
-    sleeper: Arc<dyn Sleeper + Send + Sync>,
-    cancellation_token: CancellationToken,
-}
+impl TaskCommunicator {
+    pub async fn new(
+        my_node_profile: Arc<Mutex<NodeProfile>>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+        node_profile_repo: Arc<NodeFinderRepo>,
+        session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+        option: NodeFinderOption,
+    ) -> Result<Arc<Self>> {
+        let cancellation_token = CancellationToken::new();
 
-impl Inner {
+        let v = Arc::new(Self {
+            my_node_profile,
+            sessions,
+            node_profile_repo,
+            session_receiver,
+            clock,
+            sleeper,
+            option,
+            join_handle: Arc::new(TokioMutex::new(None)),
+            communicate_join_handles: Arc::new(TokioMutex::new(Vec::new())),
+            cancellation_token: cancellation_token.clone(),
+        });
+
+        v.clone().start().await?;
+
+        Ok(v)
+    }
+
+    async fn start(self: Arc<Self>) -> Result<()> {
+        let session_receiver = self.session_receiver.clone();
+        let join_handle = self.join_handle.clone();
+        let communicate_join_handles = self.communicate_join_handles.clone();
+        *join_handle.lock().await = Some(tokio::spawn(async move {
+            loop {
+                // 終了済みのタスクを削除
+                communicate_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
+
+                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
+                    let this = self.clone();
+                    let join_handle = tokio::spawn(async move {
+                        let res = this.communicate(handshake_type, session).await;
+                        if let Err(e) = res {
+                            warn!(error_message = e.to_string(), "communicate failed");
+                        }
+                    });
+                    communicate_join_handles.lock().await.push(join_handle);
+                }
+            }
+        }));
+
+        Ok(())
+    }
+
     async fn communicate(&self, handshake_type: HandshakeType, session: Session) -> Result<()> {
         let my_node_profile = self.my_node_profile.lock().clone();
         let other_node_profile = Self::handshake(&session, &my_node_profile).await?;

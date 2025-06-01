@@ -8,7 +8,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 
 use crate::{core::storage::KeyValueFileStorage, prelude::*};
 
-use super::file_publisher::{FilePublisher, FilePublisherRepo};
+use super::*;
 
 #[allow(dead_code)]
 pub struct FileExchanger {

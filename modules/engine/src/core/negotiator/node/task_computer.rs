@@ -21,57 +21,19 @@ use crate::{
     prelude::*,
 };
 
-use super::{NodeFinderRepo, NodeProfileFetcher, SendingDataMessage, SessionStatus};
+use super::*;
 
 #[derive(Clone)]
 pub struct TaskComputer {
-    inner: Inner,
+    my_node_profile: Arc<Mutex<NodeProfile>>,
+    node_profile_repo: Arc<NodeFinderRepo>,
+    node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
+    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+    get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
+    get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
+    option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
-}
-
-impl TaskComputer {
-    pub fn new(
-        my_node_profile: Arc<Mutex<NodeProfile>>,
-        node_profile_repo: Arc<NodeFinderRepo>,
-        node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
-        get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
-        sleeper: Arc<dyn Sleeper + Send + Sync>,
-    ) -> Self {
-        let inner = Inner {
-            my_node_profile,
-            node_profile_repo,
-            node_profile_fetcher,
-            sessions,
-            get_want_asset_keys_fn,
-            get_push_asset_keys_fn,
-        };
-        Self {
-            inner,
-            sleeper,
-            join_handle: Arc::new(TokioMutex::new(None)),
-        }
-    }
-
-    pub async fn run(&self) {
-        let sleeper = self.sleeper.clone();
-        let inner = self.inner.clone();
-        let join_handle = tokio::spawn(async move {
-            if let Err(e) = inner.set_initial_node_profile().await {
-                warn!(error_message = e.to_string(), "set initial node profile failed");
-            }
-            loop {
-                sleeper.sleep(std::time::Duration::from_secs(60)).await;
-                let res = inner.compute().await;
-                if let Err(e) = res {
-                    warn!(error_message = e.to_string(), "compute failed");
-                }
-            }
-        });
-        *self.join_handle.lock().await = Some(join_handle);
-    }
 }
 
 #[async_trait]
@@ -84,17 +46,54 @@ impl Terminable for TaskComputer {
     }
 }
 
-#[derive(Clone)]
-struct Inner {
-    my_node_profile: Arc<Mutex<NodeProfile>>,
-    node_profile_repo: Arc<NodeFinderRepo>,
-    node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
-    sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
-    get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
-}
+impl TaskComputer {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new(
+        my_node_profile: Arc<Mutex<NodeProfile>>,
+        node_profile_repo: Arc<NodeFinderRepo>,
+        node_profile_fetcher: Arc<dyn NodeProfileFetcher + Send + Sync>,
+        sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
+        get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
+        get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
+        sleeper: Arc<dyn Sleeper + Send + Sync>,
+        option: NodeFinderOption,
+    ) -> Result<Arc<Self>> {
+        let v = Arc::new(Self {
+            my_node_profile,
+            node_profile_repo,
+            node_profile_fetcher,
+            sessions,
+            get_want_asset_keys_fn,
+            get_push_asset_keys_fn,
+            sleeper,
+            option,
+            join_handle: Arc::new(TokioMutex::new(None)),
+        });
 
-impl Inner {
+        v.clone().start().await?;
+
+        Ok(v)
+    }
+
+    async fn start(self: Arc<Self>) -> Result<()> {
+        let sleeper = self.sleeper.clone();
+        let join_handle = self.join_handle.clone();
+        *join_handle.lock().await = Some(tokio::spawn(async move {
+            if let Err(e) = self.set_initial_node_profile().await {
+                warn!(error_message = e.to_string(), "set initial node profile failed");
+            }
+            loop {
+                sleeper.sleep(std::time::Duration::from_secs(60)).await;
+                let res = self.compute().await;
+                if let Err(e) = res {
+                    warn!(error_message = e.to_string(), "compute failed");
+                }
+            }
+        }));
+
+        Ok(())
+    }
+
     pub async fn set_initial_node_profile(&self) -> Result<()> {
         let node_profiles = self.node_profile_fetcher.fetch().await?;
         let node_profiles: Vec<&NodeProfile> = node_profiles.iter().collect();

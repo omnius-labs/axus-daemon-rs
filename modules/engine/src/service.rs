@@ -78,7 +78,7 @@ impl AxusEngine {
                 max_accepted_session_count: 3,
             },
         )
-        .await;
+        .await?;
 
         Ok(result)
     }

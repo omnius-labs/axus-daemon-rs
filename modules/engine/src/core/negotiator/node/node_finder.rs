@@ -20,7 +20,7 @@ use crate::{
     prelude::*,
 };
 
-use super::{HandshakeType, NodeFinderRepo, NodeProfileFetcher, SessionStatus, TaskAccepter, TaskCommunicator, TaskComputer, TaskConnector};
+use super::*;
 
 #[allow(dead_code)]
 pub struct NodeFinder {
@@ -42,10 +42,10 @@ pub struct NodeFinder {
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
     get_push_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
 
-    task_connectors: Arc<TokioMutex<Vec<TaskConnector>>>,
-    task_acceptors: Arc<TokioMutex<Vec<TaskAccepter>>>,
-    task_computer: Arc<TokioMutex<Option<TaskComputer>>>,
-    task_communicator: Arc<TokioMutex<Option<TaskCommunicator>>>,
+    task_connectors: Arc<TokioMutex<Vec<Arc<TaskConnector>>>>,
+    task_acceptors: Arc<TokioMutex<Vec<Arc<TaskAccepter>>>>,
+    task_computer: Arc<TokioMutex<Option<Arc<TaskComputer>>>>,
+    task_communicator: Arc<TokioMutex<Option<Arc<TaskCommunicator>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,10 +67,10 @@ impl NodeFinder {
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
-    ) -> Self {
+    ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(20);
 
-        let result = Self {
+        let v = Self {
             my_node_profile: Arc::new(Mutex::new(NodeProfile {
                 id: Self::gen_id(),
                 addrs: Vec::new(),
@@ -97,9 +97,9 @@ impl NodeFinder {
             task_computer: Arc::new(TokioMutex::new(None)),
             task_communicator: Arc::new(TokioMutex::new(None)),
         };
-        result.run().await;
+        v.start().await?;
 
-        result
+        Ok(v)
     }
 
     pub async fn get_session_count(&self) -> usize {
@@ -113,7 +113,7 @@ impl NodeFinder {
         id.to_vec()
     }
 
-    async fn run(&self) {
+    async fn start(&self) -> Result<()> {
         for _ in 0..3 {
             let task = TaskConnector::new(
                 self.sessions.clone(),
@@ -123,8 +123,8 @@ impl NodeFinder {
                 self.node_profile_repo.clone(),
                 self.sleeper.clone(),
                 self.option.clone(),
-            );
-            task.run().await;
+            )
+            .await?;
             self.task_connectors.lock().await.push(task);
         }
 
@@ -133,10 +133,10 @@ impl NodeFinder {
                 self.sessions.clone(),
                 self.session_sender.clone(),
                 self.session_accepter.clone(),
-                self.option.clone(),
                 self.sleeper.clone(),
-            );
-            task.run().await;
+                self.option.clone(),
+            )
+            .await?;
             self.task_acceptors.lock().await.push(task);
         }
 
@@ -148,8 +148,9 @@ impl NodeFinder {
             self.get_want_asset_keys_fn.caller(),
             self.get_push_asset_keys_fn.caller(),
             self.sleeper.clone(),
-        );
-        task.run().await;
+            self.option.clone(),
+        )
+        .await?;
         self.task_computer.lock().await.replace(task);
 
         let task = TaskCommunicator::new(
@@ -159,9 +160,12 @@ impl NodeFinder {
             self.session_receiver.clone(),
             self.clock.clone(),
             self.sleeper.clone(),
-        );
-        task.run().await;
+            self.option.clone(),
+        )
+        .await?;
         self.task_communicator.lock().await.replace(task);
+
+        Ok(())
     }
 }
 
@@ -170,13 +174,13 @@ impl Terminable for NodeFinder {
     async fn terminate(&self) {
         {
             let mut task_connectors = self.task_connectors.lock().await;
-            let task_connectors: Vec<TaskConnector> = task_connectors.drain(..).collect();
+            let task_connectors: Vec<Arc<TaskConnector>> = task_connectors.drain(..).collect();
             join_all(task_connectors.iter().map(|task| task.terminate())).await;
         }
 
         {
             let mut task_acceptors = self.task_acceptors.lock().await;
-            let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
+            let task_acceptors: Vec<Arc<TaskAccepter>> = task_acceptors.drain(..).collect();
             join_all(task_acceptors.iter().map(|task| task.terminate())).await;
         }
 
@@ -314,7 +318,7 @@ mod tests {
                 max_accepted_session_count: 3,
             },
         )
-        .await;
+        .await?;
 
         Ok(result)
     }
