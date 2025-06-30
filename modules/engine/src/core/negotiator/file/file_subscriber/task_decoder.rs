@@ -274,7 +274,7 @@ impl TaskDecoder {
             self.file_publisher_repo.insert_or_ignore_uncommitted_block(&uncommitted_block).await?;
             uncommitted_blocks.push(uncommitted_block);
 
-            let path = gen_uncommitted_block_path(file_id, &block_hash);
+            let path = gen_block_path(file_id, &block_hash);
             self.blocks_storage.put_value(path.as_str(), block).await?;
 
             index += 1;

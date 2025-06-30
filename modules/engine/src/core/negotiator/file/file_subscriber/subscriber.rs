@@ -13,6 +13,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
+use tokio_util::bytes::Bytes;
 use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
@@ -28,7 +29,7 @@ use super::*;
 
 #[allow(unused)]
 pub struct FileSubscriber {
-    file_publisher_repo: Arc<FileSubscriberRepo>,
+    file_subscriber_repo: Arc<FileSubscriberRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
 
     event_sender: tokio::sync::mpsc::UnboundedSender<TaskDecoderEvent>,
@@ -76,7 +77,7 @@ impl FileSubscriber {
         .await?;
 
         let v = Arc::new(Self {
-            file_publisher_repo,
+            file_subscriber_repo: file_publisher_repo,
             blocks_storage,
 
             event_sender,
@@ -91,6 +92,21 @@ impl FileSubscriber {
         });
 
         Ok(v)
+    }
+
+    pub async fn write_block(&self, root_hash: &OmniHash, block_hash: &OmniHash, value: &Bytes) -> Result<()> {
+        let blocks = self.file_subscriber_repo.fetch_blocks(root_hash, block_hash).await?;
+        if blocks.is_empty() {
+            return Ok(());
+        }
+
+        let key = gen_block_path(root_hash, block_hash);
+        self.blocks_storage.put_value(&key, value).await?;
+
+        let new_blocks: Vec<SubscribedBlock> = blocks.into_iter().map(|n| SubscribedBlock { downloaded: true, ..n }).collect();
+        self.file_subscriber_repo
+
+        Ok(())
     }
 }
 
