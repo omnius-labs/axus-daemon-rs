@@ -25,16 +25,14 @@ use crate::{
 
 use super::*;
 
-pub enum TaskEncoderEvent {
-    UncommittedFileCanceled { file_id: String },
-}
-
 #[allow(unused)]
 pub struct TaskEncoder {
     file_publisher_repo: Arc<FilePublisherRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
 
-    current_import_file_id: Arc<Mutex<Option<String>>>,
+    cancel_event_sender: tokio::sync::mpsc::UnboundedSender<String>,
+
+    current_encoding_file_id: Arc<Mutex<Option<String>>>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -60,17 +58,19 @@ impl TaskEncoder {
         file_publisher_repo: Arc<FilePublisherRepo>,
         blocks_storage: Arc<KeyValueFileStorage>,
 
-        event_receiver: tokio::sync::mpsc::UnboundedReceiver<TaskEncoderEvent>,
-
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
+        let (cancel_event_sender, cancel_event_receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
+
         let v = Arc::new(Self {
             file_publisher_repo,
             blocks_storage,
 
-            current_import_file_id: Arc::new(Mutex::new(None)),
+            cancel_event_sender,
+
+            current_encoding_file_id: Arc::new(Mutex::new(None)),
 
             tsid_provider,
             clock,
@@ -78,15 +78,19 @@ impl TaskEncoder {
 
             join_handle: Arc::new(TokioMutex::new(None)),
         });
-        v.clone().start(event_receiver).await?;
+        v.clone().start(cancel_event_receiver).await?;
 
         Ok(v)
     }
 
-    async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<TaskEncoderEvent>) -> Result<()> {
-        let current_import_file_id = self.current_import_file_id.clone();
+    pub fn publish(&self, files: &[PublishedUncommittedFile]) {}
+
+    pub fn cancel(&self, file_id: &str) {}
+
+    async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<String>) -> Result<()> {
+        let current_import_file_id = self.current_encoding_file_id.clone();
         let mut events = UnboundedReceiverStream::new(events).filter(move |v| match v {
-            TaskEncoderEvent::UncommittedFileCanceled { file_id } => {
+            TaskEncoderEvent::Canceled { file_id } => {
                 let current_file_id = current_import_file_id.lock();
                 current_file_id.as_ref() == Some(file_id)
             }
@@ -95,7 +99,7 @@ impl TaskEncoder {
         let join_handle = self.join_handle.clone();
         *join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
-                *self.current_import_file_id.lock() = None;
+                *self.current_encoding_file_id.lock() = None;
 
                 let function = async {
                     self.sleeper.sleep(std::time::Duration::from_secs(1)).await;
@@ -105,7 +109,7 @@ impl TaskEncoder {
                         return;
                     };
 
-                    let result = self.import(uncommitted_file).await;
+                    let result = self.encode(uncommitted_file).await;
                     if let Err(e) = result {
                         warn!(error_message = e.to_string(), "failed to import.",);
                     }
@@ -132,13 +136,13 @@ impl TaskEncoder {
             }
         };
         let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_import_file_id.lock() = None;
+            *self.current_encoding_file_id.lock() = None;
             return None;
         };
 
-        *self.current_import_file_id.lock() = Some(uncommitted_file.id.clone());
+        *self.current_encoding_file_id.lock() = Some(uncommitted_file.id.clone());
 
-        // current_import_file_idがセットされる前にstateが変更される可能性があるため、再度取得する
+        // current_import_file_idがセットされる前に状態が変わる可能性があるため、再度取得する
         let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
             Ok(uncommitted_file) => uncommitted_file,
             Err(e) => {
@@ -147,20 +151,20 @@ impl TaskEncoder {
             }
         };
         let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_import_file_id.lock() = None;
+            *self.current_encoding_file_id.lock() = None;
             return None;
         };
 
         Some(uncommitted_file)
     }
 
-    async fn import(&self, uncommitted_file: PublishedUncommittedFile) -> Result<()> {
+    async fn encode(&self, uncommitted_file: PublishedUncommittedFile) -> Result<()> {
         let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
 
         let mut all_uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();
         let mut current_block_hashes: Vec<OmniHash> = Vec::new();
 
-        let mut uncommitted_blocks = self.import_bytes(&uncommitted_file.id, &mut file, uncommitted_file.block_size, 0).await?;
+        let mut uncommitted_blocks = self.encode_bytes(&uncommitted_file.id, &mut file, uncommitted_file.block_size, 0).await?;
         all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
         current_block_hashes.extend(uncommitted_blocks.iter().map(|block| block.block_hash.clone()));
 
@@ -177,7 +181,7 @@ impl TaskEncoder {
             let mut reader = BufReader::new(cursor);
 
             uncommitted_blocks = self
-                .import_bytes(&uncommitted_file.id, &mut reader, uncommitted_file.block_size, depth)
+                .encode_bytes(&uncommitted_file.id, &mut reader, uncommitted_file.block_size, depth)
                 .await?;
             all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
             current_block_hashes = uncommitted_blocks.iter().map(|block| block.block_hash.clone()).collect();
@@ -248,7 +252,7 @@ impl TaskEncoder {
         Ok(())
     }
 
-    async fn import_bytes<R>(&self, file_id: &str, reader: &mut R, max_block_size: u32, rank: u32) -> Result<Vec<PublishedUncommittedBlock>>
+    async fn encode_bytes<R>(&self, file_id: &str, reader: &mut R, max_block_size: u32, rank: u32) -> Result<Vec<PublishedUncommittedBlock>>
     where
         R: AsyncRead + Unpin,
     {

@@ -4,6 +4,7 @@ use omnius_core_omnikit::model::OmniHash;
 
 #[derive(Clone)]
 pub struct SubscribedFile {
+    pub id: String,
     pub root_hash: OmniHash,
     pub file_path: String,
     pub depth: i64,

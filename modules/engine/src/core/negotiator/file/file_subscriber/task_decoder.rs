@@ -12,7 +12,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
-use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
@@ -26,15 +25,15 @@ use crate::{
 use super::*;
 
 pub enum TaskDecoderEvent {
-    UncommittedFileCanceled { file_id: String },
+    Canceled { file_id: String },
 }
 
 #[allow(unused)]
 pub struct TaskDecoder {
-    file_publisher_repo: Arc<FileSubscriberRepo>,
+    file_subscriber_repo: Arc<FileSubscriberRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
 
-    current_import_file_id: Arc<Mutex<Option<String>>>,
+    current_decoding_file_id: Arc<Mutex<Option<String>>>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -67,10 +66,10 @@ impl TaskDecoder {
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
         let v = Arc::new(Self {
-            file_publisher_repo,
+            file_subscriber_repo: file_publisher_repo,
             blocks_storage,
 
-            current_import_file_id: Arc::new(Mutex::new(None)),
+            current_decoding_file_id: Arc::new(Mutex::new(None)),
 
             tsid_provider,
             clock,
@@ -84,9 +83,9 @@ impl TaskDecoder {
     }
 
     async fn start(self: Arc<Self>, mut events: tokio::sync::mpsc::UnboundedReceiver<TaskDecoderEvent>) -> Result<()> {
-        let current_import_file_id = self.current_import_file_id.clone();
+        let current_import_file_id = self.current_decoding_file_id.clone();
         let mut events = UnboundedReceiverStream::new(events).filter(move |v| match v {
-            TaskDecoderEvent::UncommittedFileCanceled { file_id } => {
+            TaskDecoderEvent::Canceled { file_id } => {
                 let current_file_id = current_import_file_id.lock();
                 current_file_id.as_ref() == Some(file_id)
             }
@@ -95,7 +94,7 @@ impl TaskDecoder {
         let join_handle = self.join_handle.clone();
         *join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
-                *self.current_import_file_id.lock() = None;
+                *self.current_decoding_file_id.lock() = None;
 
                 let function = async {
                     self.sleeper.sleep(std::time::Duration::from_secs(1)).await;
@@ -124,7 +123,7 @@ impl TaskDecoder {
     }
 
     async fn pickup(&self) -> Option<PublishedUncommittedFile> {
-        let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file_next().await {
+        let uncommitted_file = match self.file_subscriber_repo.fetch_uncommitted_file_next().await {
             Ok(uncommitted_file) => uncommitted_file,
             Err(e) => {
                 warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
@@ -132,14 +131,14 @@ impl TaskDecoder {
             }
         };
         let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_import_file_id.lock() = None;
+            *self.current_decoding_file_id.lock() = None;
             return None;
         };
 
-        *self.current_import_file_id.lock() = Some(uncommitted_file.id.clone());
+        *self.current_decoding_file_id.lock() = Some(uncommitted_file.id.clone());
 
         // current_import_file_idがセットされる前にstateが変更される可能性があるため、再度取得する
-        let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
+        let uncommitted_file = match self.file_subscriber_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
             Ok(uncommitted_file) => uncommitted_file,
             Err(e) => {
                 warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
@@ -147,7 +146,7 @@ impl TaskDecoder {
             }
         };
         let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_import_file_id.lock() = None;
+            *self.current_decoding_file_id.lock() = None;
             return None;
         };
 
@@ -191,9 +190,9 @@ impl TaskDecoder {
 
         let root_hash = current_block_hashes.pop().unwrap();
 
-        if let Some(committed_file) = self.file_publisher_repo.fetch_committed_file(&root_hash).await? {
+        if let Some(committed_file) = self.file_subscriber_repo.fetch_committed_file(&root_hash).await? {
             if committed_file.file_name == uncommitted_file.file_name {
-                self.file_publisher_repo.delete_uncommitted_file(&uncommitted_file.id).await?;
+                self.file_subscriber_repo.delete_uncommitted_file(&uncommitted_file.id).await?;
 
                 return Ok(());
             }
@@ -203,12 +202,12 @@ impl TaskDecoder {
                 ..committed_file
             };
 
-            for uncommitted_block in self.file_publisher_repo.fetch_uncommitted_blocks(&uncommitted_file.id).await? {
+            for uncommitted_block in self.file_subscriber_repo.fetch_uncommitted_blocks(&uncommitted_file.id).await? {
                 let path = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
                 self.blocks_storage.delete_key(path.as_str()).await?;
             }
 
-            self.file_publisher_repo
+            self.file_subscriber_repo
                 .commit_file_without_blocks(&new_committed_file, &uncommitted_file.id)
                 .await?;
 
@@ -241,7 +240,7 @@ impl TaskDecoder {
             self.blocks_storage.rename_key(old_key.as_str(), new_key.as_str()).await?;
         }
 
-        self.file_publisher_repo
+        self.file_subscriber_repo
             .commit_file_with_blocks(&committed_file, &committed_blocks, &uncommitted_file.id)
             .await?;
 
@@ -271,7 +270,7 @@ impl TaskDecoder {
                 rank,
                 index,
             };
-            self.file_publisher_repo.insert_or_ignore_uncommitted_block(&uncommitted_block).await?;
+            self.file_subscriber_repo.insert_or_ignore_uncommitted_block(&uncommitted_block).await?;
             uncommitted_blocks.push(uncommitted_block);
 
             let path = gen_block_path(file_id, &block_hash);

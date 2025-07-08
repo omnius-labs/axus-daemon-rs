@@ -104,7 +104,25 @@ impl FileSubscriber {
         self.blocks_storage.put_value(&key, value).await?;
 
         let new_blocks: Vec<SubscribedBlock> = blocks.into_iter().map(|n| SubscribedBlock { downloaded: true, ..n }).collect();
-        self.file_subscriber_repo
+        self.file_subscriber_repo.upsert_blocks(&new_blocks).await?;
+
+        let Some(file) = self.file_subscriber_repo.fetch_file(root_hash).await? else {
+            return Ok(());
+        };
+
+        let block_count_downloaded = file.block_count_downloaded + 1;
+        let status = if block_count_downloaded < file.block_count_total {
+            SubscribedFileStatus::Downloading
+        } else {
+            SubscribedFileStatus::Decoding
+        };
+
+        let new_file = SubscribedFile {
+            block_count_downloaded,
+            status,
+            ..file
+        };
+        self.file_subscriber_repo.upsert_file(&new_file).await?;
 
         Ok(())
     }

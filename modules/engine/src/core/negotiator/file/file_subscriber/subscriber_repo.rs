@@ -43,6 +43,7 @@ impl FileSubscriberRepo {
             name: "2025-06-08_init".to_string(),
             queries: r#"
 CREATE TABLE IF NOT EXISTS files (
+    id TEXT NOT NULL PRIMARY KEY,
     root_hash TEXT NOT NULL,
     file_path TEXT NOT NULL,
     depth INTEGER NOT NULL,
@@ -64,12 +65,52 @@ CREATE TABLE IF NOT EXISTS blocks (
     downloaded INTEGER NOT NULL,
     PRIMARY KEY (root_hash, block_hash, rank, `index`)
 );
-CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_committed_blocks ON committed_blocks (root_hash, rank ASC, `index` ASC);
+CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_blocks ON blocks (root_hash, rank ASC, `index` ASC, is_downloaded);
 "#
             .to_string(),
         }];
 
         SqliteMigrator::migrate(db, requests).await?;
+
+        Ok(())
+    }
+
+    pub async fn fetch_file(&self, root_hash: &OmniHash) -> Result<Option<SubscribedFile>> {
+        let res: Option<SubscribedFileRow> = sqlx::query_as(
+            r#"
+SELECT root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at
+    FROM files
+    WHERE root_hash = ?
+"#,
+        )
+        .bind(root_hash.to_string())
+        .fetch_optional(self.db.as_ref())
+        .await?;
+
+        res.map(|r| r.into()).transpose()
+    }
+
+    pub async fn upsert_file(&self, file: &SubscribedFile) -> Result<()> {
+        let row = SubscribedFileRow::from(file)?;
+        sqlx::query(
+            r#"
+INSERT INTO files (root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind(row.root_hash)
+        .bind(row.file_path)
+        .bind(row.depth)
+        .bind(row.block_count_downloaded)
+        .bind(row.block_count_total)
+        .bind(row.attrs)
+        .bind(row.priority)
+        .bind(row.status)
+        .bind(row.failed_reason)
+        .bind(row.created_at)
+        .bind(row.updated_at)
+        .execute(self.db.as_ref())
+        .await?;
 
         Ok(())
     }
@@ -101,7 +142,7 @@ INSERT OR IGNORE INTO committed_blocks (root_hash, block_hash, rank, `index`)
 "#,
             );
 
-            let rows: Vec<PublishedCommittedBlockRow> = chunk.iter().filter_map(|item| PublishedCommittedBlockRow::from(item).ok()).collect();
+            let rows: Vec<SubscribedBlockRow> = chunk.iter().filter_map(|item| SubscribedBlockRow::from(item).ok()).collect();
 
             query_builder.push_values(rows, |mut b, row| {
                 b.push_bind(row.root_hash);
@@ -120,22 +161,24 @@ INSERT OR IGNORE INTO committed_blocks (root_hash, block_hash, rank, `index`)
 
 #[derive(sqlx::FromRow)]
 struct SubscribedFileRow {
-    root_hash: String,
-    file_path: String,
-    depth: i64,
-    block_count_downloaded: i64,
-    block_count_total: i64,
-    attrs: Option<String>,
-    priority: i64,
-    status: SubscribedFileStatus,
-    failed_reason: Option<String>,
-    created_at: NaiveDateTime,
-    updated_at: NaiveDateTime,
+    pub id: String,
+    pub root_hash: String,
+    pub file_path: String,
+    pub depth: i64,
+    pub block_count_downloaded: i64,
+    pub block_count_total: i64,
+    pub attrs: Option<String>,
+    pub priority: i64,
+    pub status: SubscribedFileStatus,
+    pub failed_reason: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 impl SubscribedFileRow {
     pub fn into(self) -> Result<SubscribedFile> {
         Ok(SubscribedFile {
+            id: self.id,
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             file_path: self.file_path,
             depth: self.depth,
@@ -153,6 +196,7 @@ impl SubscribedFileRow {
     #[allow(unused)]
     pub fn from(item: &SubscribedFile) -> Result<Self> {
         Ok(Self {
+            id: item.id.to_string(),
             root_hash: item.root_hash.to_string(),
             file_path: item.file_path.clone(),
             depth: item.depth,
