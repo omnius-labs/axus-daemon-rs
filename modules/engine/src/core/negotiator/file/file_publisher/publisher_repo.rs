@@ -1,8 +1,7 @@
 use std::{path::Path, str::FromStr as _, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sqlx::{QueryBuilder, Sqlite, migrate::MigrateDatabase, sqlite::SqlitePool};
-use tokio::sync::Mutex;
+use sqlx::{QueryBuilder, sqlite::SqlitePool};
 
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
@@ -137,6 +136,43 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         Ok(res)
     }
 
+    pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> Result<()> {
+        let row = PublishedCommittedFileRow::from(item)?;
+        sqlx::query(
+            r#"
+INSERT INTO committed_files (root_hash, file_name, block_size, attrs, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind(row.root_hash)
+        .bind(row.file_name)
+        .bind(row.block_size)
+        .bind(row.attrs)
+        .bind(row.created_at)
+        .bind(row.updated_at)
+        .execute(self.db.as_ref())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn contains_committed_block(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<bool> {
+        let (res,): (i64,) = sqlx::query_as(
+            r#"
+SELECT COUNT(1)
+    FROM committed_blocks
+    WHERE root_hash = ? AND block_hash = ?
+    LIMIT 1
+"#,
+        )
+        .bind(root_hash.to_string())
+        .bind(block_hash.to_string())
+        .fetch_one(self.db.as_ref())
+        .await?;
+
+        Ok(res > 0)
+    }
+
     pub async fn commit_file_with_blocks(
         &self,
         file: &PublishedCommittedFile,
@@ -248,43 +284,6 @@ DELETE FROM uncommitted_blocks
         tx.commit().await?;
 
         Ok(())
-    }
-
-    pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> Result<()> {
-        let row = PublishedCommittedFileRow::from(item)?;
-        sqlx::query(
-            r#"
-INSERT INTO committed_files (root_hash, file_name, block_size, attrs, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-"#,
-        )
-        .bind(row.root_hash)
-        .bind(row.file_name)
-        .bind(row.block_size)
-        .bind(row.attrs)
-        .bind(row.created_at)
-        .bind(row.updated_at)
-        .execute(self.db.as_ref())
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn contains_committed_block(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<bool> {
-        let (res,): (i64,) = sqlx::query_as(
-            r#"
-SELECT COUNT(1)
-    FROM committed_blocks
-    WHERE root_hash = ? AND block_hash = ?
-    LIMIT 1
-"#,
-        )
-        .bind(root_hash.to_string())
-        .bind(block_hash.to_string())
-        .fetch_one(self.db.as_ref())
-        .await?;
-
-        Ok(res > 0)
     }
 
     pub async fn contains_uncommitted_file(&self, id: &str) -> Result<bool> {
