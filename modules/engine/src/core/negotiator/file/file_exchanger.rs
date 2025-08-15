@@ -22,11 +22,13 @@ pub struct FileExchanger {
 
 #[derive(Debug, Clone)]
 pub struct FileExchangerOption {
+    #[allow(unused)]
     pub state_dir_path: PathBuf,
 }
 
 impl FileExchanger {
     #[allow(clippy::too_many_arguments)]
+    #[allow(unused)]
     pub async fn new(
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,

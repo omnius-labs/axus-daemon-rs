@@ -13,10 +13,10 @@ pub use omnius_core_base::error::{OmniError as _, OmniErrorBuilder as _};
 pub use crate::result::Result;
 
 #[allow(unused)]
-use parking_lot::Mutex;
+pub use parking_lot::Mutex;
 
 #[allow(unused)]
-use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock};
+pub use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock};
 
 #[allow(unused)]
 pub use tracing::{debug, error, info, trace, warn};

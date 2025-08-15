@@ -79,6 +79,7 @@ impl UpnpClient {
             .build())
     }
 
+    #[allow(unused)]
     pub async fn get_generic_port_mapping_entry(index: i32) -> Result<HashMap<String, String>> {
         for urn in URNS.iter() {
             let name = "GetGenericPortMappingEntry";
@@ -156,7 +157,7 @@ impl UpnpClient {
 
         Err(Error::builder()
             .kind(ErrorKind::UpnpError)
-            .message(format!("failed to UPnP action: {}", name))
+            .message(format!("failed to UPnP action: {name}"))
             .build())
     }
 }
@@ -169,14 +170,14 @@ mod tests {
     #[ignore]
     async fn add_port_mapping_test() {
         let res = UpnpClient::add_port_mapping("TCP", 10000, 10000, "axus-daemon-rs-test").await;
-        println!("{:?}", res);
+        println!("{res:?}");
     }
 
     #[tokio::test]
     #[ignore]
     async fn delete_port_mapping_test() {
         let res = UpnpClient::delete_port_mapping("TCP", 10000).await;
-        println!("{:?}", res);
+        println!("{res:?}");
     }
 
     #[tokio::test]
@@ -187,7 +188,7 @@ mod tests {
             if res.is_err() {
                 return;
             }
-            println!("{:?}", res);
+            println!("{res:?}");
         }
     }
 
@@ -195,6 +196,6 @@ mod tests {
     #[ignore]
     async fn get_external_ip_address_test() {
         let res = UpnpClient::get_external_ip_address().await;
-        println!("{:?}", res);
+        println!("{res:?}");
     }
 }

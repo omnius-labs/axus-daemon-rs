@@ -32,6 +32,7 @@ pub struct TaskComputer {
     get_want_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
     get_push_asset_keys_fn: FnCaller<Vec<AssetKey>, ()>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
+    #[allow(unused)]
     option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }

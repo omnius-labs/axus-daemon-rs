@@ -29,7 +29,7 @@ impl FileSubscriberRepo {
             .filename(path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .busy_timeout(std::time::Duration::from_secs(5));
+            .busy_timeout(std::time::Duration::from_secs(10));
 
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
@@ -74,10 +74,25 @@ CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_blocks ON blocks (root
         Ok(())
     }
 
-    pub async fn fetch_file(&self, root_hash: &OmniHash) -> Result<Option<SubscribedFile>> {
+    pub async fn find_file_by_id(&self, id: &str) -> Result<Option<SubscribedFile>> {
         let res: Option<SubscribedFileRow> = sqlx::query_as(
             r#"
-SELECT root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at
+SELECT id, root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at
+    FROM files
+    WHERE id = ?
+"#,
+        )
+        .bind(id)
+        .fetch_optional(self.db.as_ref())
+        .await?;
+
+        res.map(|r| r.into()).transpose()
+    }
+
+    pub async fn find_file_by_root_hash(&self, root_hash: &OmniHash) -> Result<Option<SubscribedFile>> {
+        let res: Option<SubscribedFileRow> = sqlx::query_as(
+            r#"
+SELECT id, root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at
     FROM files
     WHERE root_hash = ?
 "#,
@@ -89,17 +104,33 @@ SELECT root_hash, file_path, depth, block_count_downloaded, block_count_total, a
         res.map(|r| r.into()).transpose()
     }
 
-    pub async fn upsert_file(&self, file: &SubscribedFile) -> Result<()> {
+    pub async fn find_file_by_decoding_next(&self) -> Result<Option<SubscribedFile>> {
+        let res: Option<SubscribedFileRow> = sqlx::query_as(
+            r#"
+SELECT id, root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at
+    FROM files
+    WHERE status = 'Decoding'
+    ORDER BY priority ASC, created_at ASC
+    LIMIT 1
+"#,
+        )
+        .fetch_optional(self.db.as_ref())
+        .await?;
+
+        res.map(|r| r.into()).transpose()
+    }
+
+    pub async fn insert_file(&self, file: &SubscribedFile) -> Result<()> {
         let row = SubscribedFileRow::from(file)?;
         sqlx::query(
             r#"
-INSERT INTO files (root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at)
+INSERT INTO files (id, root_hash, file_path, depth, block_count_downloaded, block_count_total, attrs, property, status, failed_reason, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(row.root_hash)
         .bind(row.file_path)
-        .bind(row.depth)
+        .bind(row.rank)
         .bind(row.block_count_downloaded)
         .bind(row.block_count_total)
         .bind(row.attrs)
@@ -114,13 +145,109 @@ INSERT INTO files (root_hash, file_path, depth, block_count_downloaded, block_co
         Ok(())
     }
 
-    pub async fn fetch_blocks(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<Vec<SubscribedBlock>> {
-        let res: Vec<SubscribedBlockRow> = sqlx::query_as(
+    pub async fn update_file_status(&self, id: &str, status: &SubscribedFileStatus) -> Result<()> {
+        sqlx::query(
             r#"
-SELECT root_hash, file_name, block_size, property, created_at, updated_at
-    FROM committed_files
+UPDATE files
+    SET status = ?
+    WHERE id = ?
 "#,
         )
+        .bind(status)
+        .bind(id)
+        .execute(self.db.as_ref())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_file(&self, id: &str) -> Result<()> {
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
+
+        let res: Option<SubscribedFileRow> = sqlx::query_as(
+            r#"
+SELECT *
+    FROM files
+    WHERE id = ?
+"#,
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(res) = res else {
+            return Err(Error::builder().kind(ErrorKind::NotFound).message(format!("{id} is not found")).build());
+        };
+
+        let file = res.into()?;
+
+        sqlx::query(
+            r#"
+DELETE FROM files
+    WHERE id = ?
+"#,
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+        let (file_count,): (i64,) = sqlx::query_as(
+            r#"
+SELECT COUNT(1)
+    FROM files
+    WHERE root_hash = ?
+    LIMIT 1
+"#,
+        )
+        .bind(file.root_hash.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if file_count == 0 {
+            sqlx::query(
+                r#"
+DELETE FROM blocks
+    WHERE root_hash = ?
+"#,
+            )
+            .bind(file.root_hash.to_string())
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub async fn find_blocks_by_root_hash_and_block_hash(&self, root_hash: &OmniHash, block_hash: &OmniHash) -> Result<Vec<SubscribedBlock>> {
+        let res: Vec<SubscribedBlockRow> = sqlx::query_as(
+            r#"
+SELECT *
+    FROM blocks
+    WHERE root_hash = ? AND block_hash = ?
+"#,
+        )
+        .bind(root_hash.to_string())
+        .bind(block_hash.to_string())
+        .fetch_all(self.db.as_ref())
+        .await?;
+
+        let res: Vec<SubscribedBlock> = res.into_iter().filter_map(|r| r.into().ok()).collect();
+
+        Ok(res)
+    }
+
+    pub async fn find_blocks_by_root_hash_and_rank(&self, root_hash: &OmniHash, rank: i64) -> Result<Vec<SubscribedBlock>> {
+        let res: Vec<SubscribedBlockRow> = sqlx::query_as(
+            r#"
+SELECT *
+    FROM blocks
+    WHERE root_hash = ? AND rank = ?
+"#,
+        )
+        .bind(root_hash.to_string())
+        .bind(rank)
         .fetch_all(self.db.as_ref())
         .await?;
 
@@ -137,7 +264,9 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         for chunk in blocks.chunks(CHUNK_SIZE as usize) {
             let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
                 r#"
-INSERT OR IGNORE INTO committed_blocks (root_hash, block_hash, rank, `index`)
+INSERT INTO blocks (root_hash, block_hash, rank, `index`, downloaded)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(root_hash, block_hash, rank, `index`) DO UPDATE SET downloaded = '?'
 "#,
             );
 
@@ -163,7 +292,7 @@ struct SubscribedFileRow {
     pub id: String,
     pub root_hash: String,
     pub file_path: String,
-    pub depth: i64,
+    pub rank: i64,
     pub block_count_downloaded: i64,
     pub block_count_total: i64,
     pub attrs: Option<String>,
@@ -180,7 +309,7 @@ impl SubscribedFileRow {
             id: self.id,
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             file_path: self.file_path,
-            depth: self.depth,
+            rank: self.rank,
             block_count_downloaded: self.block_count_downloaded,
             block_count_total: self.block_count_total,
             attrs: self.attrs,
@@ -198,7 +327,7 @@ impl SubscribedFileRow {
             id: item.id.to_string(),
             root_hash: item.root_hash.to_string(),
             file_path: item.file_path.clone(),
-            depth: item.depth,
+            rank: item.rank,
             block_count_downloaded: item.block_count_downloaded,
             block_count_total: item.block_count_downloaded,
             attrs: item.attrs.as_ref().map(|n| n.to_string()),

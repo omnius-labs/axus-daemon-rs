@@ -19,6 +19,7 @@ use super::UpnpClient;
 #[async_trait]
 pub trait ConnectionTcpAccepter: Terminable {
     async fn accept(&self) -> Result<(FramedStream, SocketAddr)>;
+    #[allow(unused)]
     async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>>;
 }
 
@@ -120,6 +121,6 @@ impl UpnpPortMapping {
 #[async_trait]
 impl Terminable for UpnpPortMapping {
     async fn terminate(&self) {
-        UpnpClient::delete_port_mapping("TCP", self.port).await;
+        let _ = UpnpClient::delete_port_mapping("TCP", self.port).await;
     }
 }

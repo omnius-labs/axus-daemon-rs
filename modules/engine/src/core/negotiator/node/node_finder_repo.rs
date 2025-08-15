@@ -25,7 +25,7 @@ impl NodeFinderRepo {
             .filename(path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .busy_timeout(std::time::Duration::from_secs(5));
+            .busy_timeout(std::time::Duration::from_secs(10));
 
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(db.as_ref()).await?;

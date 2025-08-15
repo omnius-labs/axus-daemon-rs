@@ -1,27 +1,16 @@
-use core::task;
-use std::io::Cursor;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::FutureExt as _;
 use parking_lot::Mutex;
-use tokio::{
-    fs::File,
-    io::{AsyncRead, AsyncReadExt, BufReader},
-    sync::Mutex as TokioMutex,
-    task::JoinHandle,
-};
-use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
+use tokio::sync::Mutex as TokioMutex;
 use tokio_util::bytes::Bytes;
-use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
-use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
-use omnius_core_rocketpack::RocketMessage;
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{negotiator::file::model::PublishedUncommittedFile, storage::KeyValueFileStorage, util::Terminable},
+    core::{storage::KeyValueFileStorage, util::Terminable},
     prelude::*,
 };
 
@@ -32,23 +21,21 @@ pub struct FileSubscriber {
     file_subscriber_repo: Arc<FileSubscriberRepo>,
     blocks_storage: Arc<KeyValueFileStorage>,
 
-    event_sender: tokio::sync::mpsc::UnboundedSender<TaskDecoderEvent>,
-
-    task_encoder: Arc<TokioMutex<Option<Arc<TaskDecoder>>>>,
+    task_decoder: Arc<TokioMutex<Option<Arc<TaskDecoder>>>>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
-
-    join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
 }
 
 #[async_trait]
 impl Terminable for FileSubscriber {
     async fn terminate(&self) {
-        if let Some(join_handle) = self.join_handle.lock().await.take() {
-            join_handle.abort();
-            let _ = join_handle.fuse().await;
+        {
+            let mut task_decoder = self.task_decoder.lock().await;
+            if let Some(task_decoder) = task_decoder.take() {
+                task_decoder.terminate().await;
+            }
         }
     }
 }
@@ -57,45 +44,46 @@ impl Terminable for FileSubscriber {
 impl FileSubscriber {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        file_publisher_repo: Arc<FileSubscriberRepo>,
+        file_subscriber_repo: Arc<FileSubscriberRepo>,
         blocks_storage: Arc<KeyValueFileStorage>,
 
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
-        let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel::<TaskDecoderEvent>();
-
-        let task_encoder = TaskDecoder::new(
-            file_publisher_repo.clone(),
-            blocks_storage.clone(),
-            event_receiver,
-            tsid_provider.clone(),
-            clock.clone(),
-            sleeper.clone(),
-        )
-        .await?;
-
         let v = Arc::new(Self {
-            file_subscriber_repo: file_publisher_repo,
+            file_subscriber_repo,
             blocks_storage,
 
-            event_sender,
-
-            task_encoder: Arc::new(TokioMutex::new(Some(task_encoder))),
+            task_decoder: Arc::new(TokioMutex::new(None)),
 
             tsid_provider,
             clock,
             sleeper,
-
-            join_handle: Arc::new(TokioMutex::new(None)),
         });
 
         Ok(v)
     }
 
+    async fn start(&self) -> Result<()> {
+        let task = TaskDecoder::new(
+            self.file_subscriber_repo.clone(),
+            self.blocks_storage.clone(),
+            self.tsid_provider.clone(),
+            self.clock.clone(),
+            self.sleeper.clone(),
+        )
+        .await?;
+        self.task_decoder.lock().await.replace(task);
+
+        Ok(())
+    }
+
     pub async fn write_block(&self, root_hash: &OmniHash, block_hash: &OmniHash, value: &Bytes) -> Result<()> {
-        let blocks = self.file_subscriber_repo.fetch_blocks(root_hash, block_hash).await?;
+        let blocks = self
+            .file_subscriber_repo
+            .find_blocks_by_root_hash_and_block_hash(root_hash, block_hash)
+            .await?;
         if blocks.is_empty() {
             return Ok(());
         }
@@ -106,7 +94,7 @@ impl FileSubscriber {
         let new_blocks: Vec<SubscribedBlock> = blocks.into_iter().map(|n| SubscribedBlock { downloaded: true, ..n }).collect();
         self.file_subscriber_repo.upsert_blocks(&new_blocks).await?;
 
-        let Some(file) = self.file_subscriber_repo.fetch_file(root_hash).await? else {
+        let Some(file) = self.file_subscriber_repo.find_file_by_root_hash(root_hash).await? else {
             return Ok(());
         };
 
@@ -122,7 +110,7 @@ impl FileSubscriber {
             status,
             ..file
         };
-        self.file_subscriber_repo.upsert_file(&new_file).await?;
+        self.file_subscriber_repo.insert_file(&new_file).await?;
 
         Ok(())
     }

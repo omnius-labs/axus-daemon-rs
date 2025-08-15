@@ -12,6 +12,7 @@ pub struct TcpProxyOption {
 
 pub enum TcpProxyType {
     None,
+    #[allow(unused)]
     Socks5,
 }
 
@@ -53,7 +54,7 @@ impl ConnectionTcpConnector for ConnectionTcpConnectorImpl {
                 }
                 return Err(Error::builder()
                     .kind(ErrorKind::NetworkError)
-                    .message(format!("failed to connect by socks5: {:?}", addr))
+                    .message(format!("failed to connect by socks5: {addr:?}"))
                     .build());
             }
         }

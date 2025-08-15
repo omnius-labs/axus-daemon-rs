@@ -50,6 +50,7 @@ pub struct NodeFinder {
 
 #[derive(Debug, Clone)]
 pub struct NodeFinderOption {
+    #[allow(unused)]
     pub state_dir_path: String,
     pub max_connected_session_count: usize,
     pub max_accepted_session_count: usize,
@@ -102,6 +103,7 @@ impl NodeFinder {
         Ok(v)
     }
 
+    #[allow(unused)]
     pub async fn get_session_count(&self) -> usize {
         self.sessions.read().await.len()
     }

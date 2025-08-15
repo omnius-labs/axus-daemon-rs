@@ -21,17 +21,20 @@ use crate::{
     prelude::*,
 };
 
+#[allow(unused)]
 struct AxusEngine {
     node_finder: NodeFinder,
 }
 
 impl AxusEngine {
+    #[allow(unused)]
     pub async fn new() -> Result<Self> {
         Ok(AxusEngine {
             node_finder: Self::create_node_finder(Path::new("aaa"), 6666).await?,
         })
     }
 
+    #[allow(unused)]
     async fn create_node_finder(dir_path: &Path, port: u16) -> Result<NodeFinder> {
         let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
             Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);

@@ -84,7 +84,7 @@ impl SessionConnector {
         } else {
             Err(Error::builder()
                 .kind(ErrorKind::UnsupportedVersion)
-                .message(format!("Unsupported session version: {:?}", version))
+                .message(format!("Unsupported session version: {version:?}"))
                 .build())
         }
     }

@@ -28,7 +28,7 @@ impl UriConverter {
         let crc = BASE64.encode(crc);
 
         let mut s = String::new();
-        s.push_str(format!("axus:{}", typ).as_str());
+        s.push_str(format!("axus:{typ}").as_str());
         s.push('/');
         s.push_str(crc.as_str());
         s.push('.');
@@ -63,7 +63,7 @@ impl UriConverter {
     }
 
     fn try_parse_schema<'a>(typ: &str, text: &'a str) -> Result<&'a str> {
-        if text.starts_with(format!("axus:{}/", typ).as_str()) {
+        if text.starts_with(format!("axus:{typ}/").as_str()) {
             let text = text.split_once('/').unwrap().1;
             return Ok(text);
         }
@@ -99,7 +99,7 @@ mod tests {
             addrs: ["a", "b", "c"].into_iter().map(OmniAddr::new).collect(),
         };
         let s = UriConverter::encode_node_profile(&v).unwrap();
-        println!("{}", s);
+        println!("{s}");
         let v2 = UriConverter::decode_node_profile(s.as_str()).unwrap();
         assert_eq!(v, v2);
     }

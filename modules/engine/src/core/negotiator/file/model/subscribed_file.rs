@@ -7,7 +7,7 @@ pub struct SubscribedFile {
     pub id: String,
     pub root_hash: OmniHash,
     pub file_path: String,
-    pub depth: i64,
+    pub rank: i64,
     pub block_count_downloaded: i64,
     pub block_count_total: i64,
     pub attrs: Option<String>,
@@ -18,7 +18,7 @@ pub struct SubscribedFile {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum SubscribedFileStatus {
     Unknown,
     Downloading,

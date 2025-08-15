@@ -35,6 +35,7 @@ pub struct TaskCommunicator {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
+    #[allow(unused)]
     option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
     communicate_join_handles: Arc<TokioMutex<Vec<JoinHandle<()>>>>,

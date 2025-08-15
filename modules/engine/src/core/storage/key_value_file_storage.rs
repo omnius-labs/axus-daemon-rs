@@ -19,6 +19,7 @@ pub struct KeyValueFileStorage {
 }
 
 impl KeyValueFileStorage {
+    #[allow(unused)]
     pub async fn new<P: AsRef<Path>>(dir_path: P) -> Result<Self> {
         let dir_path = dir_path.as_ref().to_path_buf();
         let sqlite_path = dir_path.join("sqlite.db");
@@ -27,7 +28,7 @@ impl KeyValueFileStorage {
             .filename(sqlite_path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .busy_timeout(std::time::Duration::from_secs(5));
+            .busy_timeout(std::time::Duration::from_secs(10));
 
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(result.rows_affected() > 0)
     }
 
+    #[allow(unused)]
     pub async fn contains_key(&self, key: &str) -> Result<bool> {
         let _guard = self.lock.lock().await;
 
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(count > 0)
     }
 
+    #[allow(unused)]
     pub async fn get_keys(&self) -> Result<Pin<Box<impl Stream<Item = Result<String>>>>> {
         const CHUNK_SIZE: i64 = 500;
 
@@ -157,6 +160,7 @@ CREATE TABLE IF NOT EXISTS keys (
         Ok(true)
     }
 
+    #[allow(unused)]
     pub async fn shrink<T>(&self, exclude_key: T) -> Result<()>
     where
         T: Fn(&str) -> bool,
@@ -270,7 +274,7 @@ CREATE TEMP TABLE unused_keys (
             let v = ((id >> (i * 11)) & 0x7FF) as usize;
             res[5 - i] = v;
         }
-        res.iter().map(|v| format!("{:03x}", v)).collect::<Vec<_>>().join("/")
+        res.iter().map(|v| format!("{v:03x}")).collect::<Vec<_>>().join("/")
     }
 }
 
@@ -431,8 +435,8 @@ mod tests {
         for i in 0..10 {
             let storage = storage.clone();
             let handle = tokio::spawn(async move {
-                let key = format!("key{}", i);
-                let value = format!("value{}", i);
+                let key = format!("key_{i}");
+                let value = format!("value_{i}");
                 storage.put_value(&key, value.as_bytes()).await
             });
             handles.push(handle);
@@ -445,8 +449,8 @@ mod tests {
 
         // すべてのキーが正しく保存されているか確認
         for i in 0..10 {
-            let key = format!("key{}", i);
-            let expected_value = format!("value{}", i);
+            let key = format!("key_{i}");
+            let expected_value = format!("value_{i}");
             let value = storage.get_value(&key).await?.unwrap();
             assert_eq!(value, Bytes::from(expected_value));
         }

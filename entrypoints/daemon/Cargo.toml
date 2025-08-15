@@ -46,6 +46,7 @@ tempfile = { workspace = true }
 clap = { workspace = true }
 backtrace = { workspace = true }
 strum = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 testcontainers = { workspace = true }

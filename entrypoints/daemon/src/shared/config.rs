@@ -19,7 +19,7 @@ impl AppConfig {
         let path = path
             .as_ref()
             .to_str()
-            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;
 
         let toml = std::fs::read_to_string(path)?;
         let toml: AppConfigToml = toml::from_str(&toml)?;
@@ -50,7 +50,7 @@ mod tests {
 
         let conf = AppConfig::load(tempfile.path()).await?;
 
-        println!("{:?}", conf);
+        println!("{conf:?}");
 
         Ok(())
     }

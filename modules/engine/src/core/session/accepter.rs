@@ -210,7 +210,7 @@ impl Inner {
 
                 let session = Session {
                     typ: typ.clone(),
-                    address: OmniAddr::new(format!("tcp({})", addr).as_str()),
+                    address: OmniAddr::new(format!("tcp({addr})").as_str()),
                     handshake_type: SessionHandshakeType::Accepted,
                     cert: received_signature_message.cert,
                     stream,
@@ -227,7 +227,7 @@ impl Inner {
         } else {
             Err(Error::builder()
                 .kind(ErrorKind::UnsupportedVersion)
-                .message(format!("Unsupported session version: {:?}", version))
+                .message(format!("Unsupported session version: {version:?}"))
                 .build())
         }
     }

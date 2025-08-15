@@ -2200,6 +2200,7 @@ dependencies = [
  "omnius-core-omnikit",
  "omnius-core-rocketpack",
  "once_cell",
+ "parking_lot",
  "reqwest",
  "ring",
  "serde",

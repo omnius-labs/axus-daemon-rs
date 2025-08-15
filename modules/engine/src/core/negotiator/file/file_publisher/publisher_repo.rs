@@ -29,7 +29,7 @@ impl FilePublisherRepo {
             .filename(path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .busy_timeout(std::time::Duration::from_secs(5));
+            .busy_timeout(std::time::Duration::from_secs(10));
 
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
@@ -316,7 +316,7 @@ SELECT id, file_name, block_size, property, created_at, updated_at
         Ok(res)
     }
 
-    pub async fn find_uncommitted_file_by_first(&self) -> Result<Option<PublishedUncommittedFile>> {
+    pub async fn find_uncommitted_file_by_encoding_next(&self) -> Result<Option<PublishedUncommittedFile>> {
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_path, file_name, block_size, attrs, priority, created_at, updated_at
@@ -510,6 +510,7 @@ pub struct PublishedCommittedBlockRow {
 }
 
 impl PublishedCommittedBlockRow {
+    #[allow(unused)]
     pub fn into(self) -> Result<PublishedCommittedBlock> {
         Ok(PublishedCommittedBlock {
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),

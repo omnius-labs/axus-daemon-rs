@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

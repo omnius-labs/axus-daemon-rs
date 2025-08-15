@@ -16,7 +16,7 @@ pub struct PublishedUncommittedFile {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PublishedUncommittedFileStatus {
     Unknown,
     Pending,

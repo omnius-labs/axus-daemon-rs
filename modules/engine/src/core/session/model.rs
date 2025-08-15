@@ -15,9 +15,13 @@ pub enum SessionHandshakeType {
 
 #[derive(Clone)]
 pub struct Session {
+    #[allow(unused)]
     pub typ: SessionType,
+    #[allow(unused)]
     pub address: OmniAddr,
+    #[allow(unused)]
     pub handshake_type: SessionHandshakeType,
+    #[allow(unused)]
     pub cert: OmniCert,
     pub stream: FramedStream,
 }
