@@ -1,14 +1,13 @@
 use std::{path::Path, str::FromStr as _, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sqlx::{QueryBuilder, Sqlite, migrate::MigrateDatabase, sqlite::SqlitePool};
-use tokio::sync::Mutex;
+use sqlx::{QueryBuilder, sqlite::SqlitePool};
 
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 use omnius_core_omnikit::model::OmniHash;
 
-use crate::{core::negotiator::file::model::PublishedUncommittedFileStatus, prelude::*};
+use crate::prelude::*;
 
 use super::*;
 
@@ -24,7 +23,7 @@ impl FileSubscriberRepo {
         let path = dir_path.as_ref().join("sqlite.db");
         let path = path
             .to_str()
-            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;
 
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(path)

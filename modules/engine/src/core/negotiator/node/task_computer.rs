@@ -128,7 +128,7 @@ impl TaskComputer {
                 let mut push_asset_key_locations: Vec<(Arc<AssetKey>, Vec<Arc<NodeProfile>>)> =
                     data.push_asset_key_locations.iter().map(|(k, v)| (k.clone(), v.to_vec())).collect();
 
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 want_asset_keys.shuffle(&mut rng);
                 give_asset_key_locations.shuffle(&mut rng);
                 push_asset_key_locations.shuffle(&mut rng);

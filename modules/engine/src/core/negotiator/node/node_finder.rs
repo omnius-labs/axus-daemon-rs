@@ -12,7 +12,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     core::{
-        connection::{ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl},
+        connection::{ConnectionTcpAccepter, ConnectionTcpConnector},
         session::{SessionAccepter, SessionConnector, model::Session},
         util::{FnHub, Terminable, VolatileHashSet},
     },
@@ -107,7 +107,7 @@ impl NodeFinder {
     }
 
     fn gen_id() -> Vec<u8> {
-        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng = ChaCha20Rng::from_os_rng();
         let mut id = [0_u8, 32];
         rng.fill_bytes(&mut id);
         id.to_vec()
@@ -220,7 +220,7 @@ mod tests {
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
     use crate::core::{
-        connection::{TcpProxyOption, TcpProxyType},
+        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
         negotiator::NodeProfileFetcherMock,
     };
 

@@ -1,12 +1,10 @@
-use crate::{model::NodeProfile, prelude::*};
-
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64};
 use crc::{CRC_32_ISCSI, Crc};
 use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
 
-use crate::prelude::*;
+use crate::{model::NodeProfile, prelude::*};
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -45,18 +43,19 @@ impl UriConverter {
 
         match version {
             1 => Self::decode_v1(text),
-            _ => Err(Error::new(ErrorKind::UnsupportedVersion)),
+            _ => Err(Error::builder().kind(ErrorKind::UnsupportedVersion).build()),
         }
     }
 
     fn decode_v1<T: RocketMessage>(text: &str) -> Result<T> {
         let (crc, body) = Self::try_parse_body(text)?;
 
-        let crc = <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| Error::new(ErrorKind::InvalidFormat).message("invalid crc"))?;
+        let crc =
+            <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| Error::builder().kind(ErrorKind::InvalidFormat).message("invalid crc").build())?;
         let mut body = Bytes::from(BASE64.decode(body.as_bytes())?);
 
         if crc != CASTAGNOLI.checksum(body.as_ref()).to_le_bytes() {
-            return Err(Error::new(ErrorKind::InvalidFormat).message("invalid checksum"));
+            return Err(Error::builder().kind(ErrorKind::InvalidFormat).message("invalid checksum").build());
         }
 
         let v = T::import(&mut body)?;
@@ -68,13 +67,13 @@ impl UriConverter {
             let text = text.split_once('/').unwrap().1;
             return Ok(text);
         }
-        Err(Error::new(ErrorKind::InvalidFormat).message("invalid schema"))
+        Err(Error::builder().kind(ErrorKind::InvalidFormat).message("invalid schema").build())
     }
 
     fn try_parse_version(text: &str) -> Result<(&str, u32)> {
         let (text, version) = text
             .rsplit_once('.')
-            .ok_or_else(|| Error::new(ErrorKind::InvalidFormat).message("separator not found"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::InvalidFormat).message("separator not found").build())?;
         let version: u32 = version.parse()?;
         Ok((text, version))
     }
@@ -82,7 +81,7 @@ impl UriConverter {
     fn try_parse_body(text: &str) -> Result<(&str, &str)> {
         let (crc, body) = text
             .split_once('.')
-            .ok_or_else(|| Error::new(ErrorKind::InvalidFormat).message("separator not found"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::InvalidFormat).message("separator not found").build())?;
         Ok((crc, body))
     }
 }

@@ -23,7 +23,7 @@ impl FilePublisherRepo {
         let path = dir_path.as_ref().join("sqlite.db");
         let path = path
             .to_str()
-            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;
 
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(path)
@@ -107,7 +107,21 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_committed_file(&self, root_hash: &OmniHash) -> Result<Option<PublishedCommittedFile>> {
+    pub async fn get_committed_files(&self) -> Result<Vec<PublishedCommittedFile>> {
+        let res: Vec<PublishedCommittedFileRow> = sqlx::query_as(
+            r#"
+SELECT root_hash, file_name, block_size, property, created_at, updated_at
+    FROM committed_files
+"#,
+        )
+        .fetch_all(self.db.as_ref())
+        .await?;
+
+        let res: Vec<PublishedCommittedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
+        Ok(res)
+    }
+
+    pub async fn find_committed_file_by_root_hash(&self, root_hash: &OmniHash) -> Result<Option<PublishedCommittedFile>> {
         let res: Option<PublishedCommittedFileRow> = sqlx::query_as(
             r#"
 SELECT root_hash, file_name, block_size, property, created_at, updated_at
@@ -120,20 +134,6 @@ SELECT root_hash, file_name, block_size, property, created_at, updated_at
         .await?;
 
         res.map(|r| r.into()).transpose()
-    }
-
-    pub async fn fetch_committed_files(&self) -> Result<Vec<PublishedCommittedFile>> {
-        let res: Vec<PublishedCommittedFileRow> = sqlx::query_as(
-            r#"
-SELECT root_hash, file_name, block_size, property, created_at, updated_at
-    FROM committed_files
-"#,
-        )
-        .fetch_all(self.db.as_ref())
-        .await?;
-
-        let res: Vec<PublishedCommittedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
-        Ok(res)
     }
 
     pub async fn insert_committed_file(&self, item: &PublishedCommittedFile) -> Result<()> {
@@ -302,7 +302,21 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_uncommitted_file_next(&self) -> Result<Option<PublishedUncommittedFile>> {
+    pub async fn get_uncommitted_files(&self) -> Result<Vec<PublishedUncommittedFile>> {
+        let res: Vec<PublishedUncommittedFileRow> = sqlx::query_as(
+            r#"
+SELECT id, file_name, block_size, property, created_at, updated_at
+    FROM uncommitted_files
+"#,
+        )
+        .fetch_all(self.db.as_ref())
+        .await?;
+
+        let res: Vec<PublishedUncommittedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
+        Ok(res)
+    }
+
+    pub async fn find_uncommitted_file_by_first(&self) -> Result<Option<PublishedUncommittedFile>> {
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_path, file_name, block_size, attrs, priority, created_at, updated_at
@@ -317,7 +331,7 @@ SELECT id, file_path, file_name, block_size, attrs, priority, created_at, update
         res.map(|r| r.into()).transpose()
     }
 
-    pub async fn fetch_uncommitted_file(&self, id: &str) -> Result<Option<PublishedUncommittedFile>> {
+    pub async fn find_uncommitted_file_by_id(&self, id: &str) -> Result<Option<PublishedUncommittedFile>> {
         let res: Option<PublishedUncommittedFileRow> = sqlx::query_as(
             r#"
 SELECT id, file_name, block_size, property, created_at, updated_at
@@ -332,34 +346,40 @@ SELECT id, file_name, block_size, property, created_at, updated_at
         res.map(|r| r.into()).transpose()
     }
 
-    pub async fn fetch_uncommitted_files(&self) -> Result<Vec<PublishedUncommittedFile>> {
-        let res: Vec<PublishedUncommittedFileRow> = sqlx::query_as(
-            r#"
-SELECT id, file_name, block_size, property, created_at, updated_at
-    FROM uncommitted_files
-"#,
-        )
-        .fetch_all(self.db.as_ref())
-        .await?;
-
-        let res: Vec<PublishedUncommittedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
-        Ok(res)
-    }
-
     pub async fn insert_uncommitted_file(&self, item: &PublishedUncommittedFile) -> Result<()> {
         let row = PublishedUncommittedFileRow::from(item)?;
         sqlx::query(
             r#"
-INSERT INTO uncommitted_files (id, file_name, block_size, attrs, created_at, updated_at)
+INSERT INTO uncommitted_files (id, file_path, file_name, block_size, attrs, priority, status, failed_reason, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(row.id)
+        .bind(row.file_path)
         .bind(row.file_name)
         .bind(row.block_size)
         .bind(row.attrs)
+        .bind(row.priority)
+        .bind(row.status)
+        .bind(row.failed_reason)
         .bind(row.created_at)
         .bind(row.updated_at)
+        .execute(self.db.as_ref())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_uncommitted_file_status(&self, id: &str, status: &PublishedUncommittedFileStatus) -> Result<()> {
+        sqlx::query(
+            r#"
+UPDATE uncommitted_files
+    SET status = ?
+    WHERE id = ?
+"#,
+        )
+        .bind(status)
+        .bind(id)
         .execute(self.db.as_ref())
         .await?;
 
@@ -411,7 +431,7 @@ SELECT COUNT(1)
         Ok(res > 0)
     }
 
-    pub async fn fetch_uncommitted_blocks(&self, file_id: &str) -> Result<Vec<PublishedUncommittedBlock>> {
+    pub async fn find_uncommitted_blocks_by_file_id(&self, file_id: &str) -> Result<Vec<PublishedUncommittedBlock>> {
         let res: Vec<PublishedUncommittedBlockRow> = sqlx::query_as(
             r#"
 SELECT file_id, block_hash, rank, `index`

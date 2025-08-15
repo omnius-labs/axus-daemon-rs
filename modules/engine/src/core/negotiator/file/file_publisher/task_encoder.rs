@@ -1,5 +1,4 @@
-use std::io::Cursor;
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -103,10 +102,16 @@ impl TaskEncoder {
 
         self.file_publisher_repo.insert_uncommitted_file(&file).await?;
 
+        self.publish_event_listener.notify();
+
         Ok(())
     }
 
     pub async fn cancel(&self, file_id: &str) -> Result<()> {
+        self.file_publisher_repo
+            .update_uncommitted_file_status(file_id, &PublishedUncommittedFileStatus::Canceled)
+            .await?;
+
         let guard = self.current_encoding_file_id.lock();
 
         let Some(current_encoding_file_id) = guard.as_ref() else {
@@ -129,7 +134,7 @@ impl TaskEncoder {
         *join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    Ok(next) = self.encode() => {
+                    next = self.encode() => {
                         if next {
                             continue;
                         }
@@ -146,12 +151,52 @@ impl TaskEncoder {
         Ok(())
     }
 
-    async fn encode(&self) -> Result<bool> {
+    async fn encode(&self) -> bool {
         let Some(uncommitted_file) = self.pickup().await else {
-            warn!("no uncommitted file to import.");
-            return Ok(false);
+            return false;
         };
 
+        if let Err(e) = self.encode_file(uncommitted_file).await {
+            warn!(error = ?e, "encode file error");
+        }
+
+        *self.current_encoding_file_id.lock() = None;
+
+        return true;
+    }
+
+    async fn pickup(&self) -> Option<PublishedUncommittedFile> {
+        let uncommitted_file = match self.file_publisher_repo.find_uncommitted_file_by_first().await {
+            Ok(uncommitted_file) => uncommitted_file,
+            Err(e) => {
+                info!(error_message = e.to_string(), "uncommitted file not found",);
+                return None;
+            }
+        };
+        let Some(uncommitted_file) = uncommitted_file else {
+            *self.current_encoding_file_id.lock() = None;
+            return None;
+        };
+
+        *self.current_encoding_file_id.lock() = Some(uncommitted_file.id.clone());
+
+        // current_import_file_idがセットされる前に状態が変わる可能性があるため、再度取得する
+        let uncommitted_file = match self.file_publisher_repo.find_uncommitted_file_by_id(&uncommitted_file.id).await {
+            Ok(uncommitted_file) => uncommitted_file,
+            Err(e) => {
+                warn!(error_message = e.to_string(), "uncommitted file did lost",);
+                return None;
+            }
+        };
+        let Some(uncommitted_file) = uncommitted_file else {
+            *self.current_encoding_file_id.lock() = None;
+            return None;
+        };
+
+        Some(uncommitted_file)
+    }
+
+    async fn encode_file(&self, uncommitted_file: PublishedUncommittedFile) -> Result<()> {
         let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
 
         let mut all_uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();
@@ -165,7 +210,7 @@ impl TaskEncoder {
         loop {
             let merkle_layer = MerkleLayer {
                 rank: depth,
-                hashes: current_block_hashes.clone(),
+                hashes: current_block_hashes.drain(..).collect(),
             };
 
             let bytes = merkle_layer.export()?;
@@ -188,11 +233,11 @@ impl TaskEncoder {
 
         let root_hash = current_block_hashes.pop().unwrap();
 
-        if let Some(committed_file) = self.file_publisher_repo.fetch_committed_file(&root_hash).await? {
+        if let Some(committed_file) = self.file_publisher_repo.find_committed_file_by_root_hash(&root_hash).await? {
             if committed_file.file_name == uncommitted_file.file_name {
                 self.file_publisher_repo.delete_uncommitted_file(&uncommitted_file.id).await?;
 
-                return Ok(true);
+                return Ok(());
             }
 
             let new_committed_file = PublishedCommittedFile {
@@ -200,7 +245,7 @@ impl TaskEncoder {
                 ..committed_file
             };
 
-            for uncommitted_block in self.file_publisher_repo.fetch_uncommitted_blocks(&uncommitted_file.id).await? {
+            for uncommitted_block in self.file_publisher_repo.find_uncommitted_blocks_by_file_id(&uncommitted_file.id).await? {
                 let path = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
                 self.blocks_storage.delete_key(path.as_str()).await?;
             }
@@ -209,7 +254,7 @@ impl TaskEncoder {
                 .commit_file_without_blocks(&new_committed_file, &uncommitted_file.id)
                 .await?;
 
-            return Ok(true);
+            return Ok(());
         }
 
         let now = self.clock.now();
@@ -242,38 +287,7 @@ impl TaskEncoder {
             .commit_file_with_blocks(&committed_file, &committed_blocks, &uncommitted_file.id)
             .await?;
 
-        Ok(true)
-    }
-
-    async fn pickup(&self) -> Option<PublishedUncommittedFile> {
-        let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file_next().await {
-            Ok(uncommitted_file) => uncommitted_file,
-            Err(e) => {
-                warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
-                return None;
-            }
-        };
-        let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_encoding_file_id.lock() = None;
-            return None;
-        };
-
-        *self.current_encoding_file_id.lock() = Some(uncommitted_file.id.clone());
-
-        // current_import_file_idがセットされる前に状態が変わる可能性があるため、再度取得する
-        let uncommitted_file = match self.file_publisher_repo.fetch_uncommitted_file(&uncommitted_file.id).await {
-            Ok(uncommitted_file) => uncommitted_file,
-            Err(e) => {
-                warn!(error_message = e.to_string(), "fetch uncommitted file failed",);
-                return None;
-            }
-        };
-        let Some(uncommitted_file) = uncommitted_file else {
-            *self.current_encoding_file_id.lock() = None;
-            return None;
-        };
-
-        Some(uncommitted_file)
+        Ok(())
     }
 
     async fn encode_bytes<R>(&self, file_id: &str, reader: &mut R, max_block_size: u32, rank: u32) -> Result<Vec<PublishedUncommittedBlock>>
@@ -283,14 +297,15 @@ impl TaskEncoder {
         let mut uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();
         let mut index = 0;
 
-        let mut buf = vec![0; max_block_size as usize];
         loop {
-            let size = reader.read_exact(&mut buf).await?;
-            if size == 0 {
+            let mut block: Vec<u8> = Vec::new();
+            let mut take = reader.take(max_block_size as u64);
+            let n = take.read_to_end(&mut block).await?;
+            if n == 0 {
                 break;
             }
 
-            let block = &buf[..size];
+            let block = block.as_slice();
             let block_hash = OmniHash::compute_hash(OmniHashAlgorithmType::Sha3_256, block);
 
             let uncommitted_block = PublishedUncommittedBlock {

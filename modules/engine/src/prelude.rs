@@ -7,6 +7,16 @@ pub use omnius_core_rocketpack::{
 pub use crate::error::{Error, ErrorKind};
 
 #[allow(unused)]
+pub use omnius_core_base::error::{OmniError as _, OmniErrorBuilder as _};
+
+#[allow(unused)]
 pub use crate::result::Result;
 
-pub use tracing::{error, info, warn};
+#[allow(unused)]
+use parking_lot::Mutex;
+
+#[allow(unused)]
+use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock};
+
+#[allow(unused)]
+pub use tracing::{debug, error, info, trace, warn};

@@ -82,14 +82,17 @@ impl SessionAccepter {
 
     pub async fn accept(&self, typ: &SessionType) -> Result<Session> {
         let mut receivers = self.receivers.lock().await;
-        let receiver = receivers
-            .get_mut(typ)
-            .ok_or_else(|| Error::new(ErrorKind::UnsupportedType).message("unsupported session type"))?;
+        let receiver = receivers.get_mut(typ).ok_or_else(|| {
+            Error::builder()
+                .kind(ErrorKind::UnsupportedType)
+                .message("unsupported session type")
+                .build()
+        })?;
 
         receiver
             .recv()
             .await
-            .ok_or_else(|| Error::new(ErrorKind::EndOfStream).message("receiver is closed"))
+            .ok_or_else(|| Error::builder().kind(ErrorKind::EndOfStream).message("receiver is closed").build())
     }
 }
 
@@ -186,12 +189,17 @@ impl Inner {
             let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
-                return Err(Error::new(ErrorKind::InvalidFormat).message("Invalid signature"));
+                return Err(Error::builder().kind(ErrorKind::InvalidFormat).message("Invalid signature").build());
             }
 
             let received_session_request_message: V1RequestMessage = stream.receiver.lock().await.recv_message().await?;
             let typ = match received_session_request_message.request_type {
-                V1RequestType::Unknown => return Err(Error::new(ErrorKind::UnsupportedType).message("unsupported request type")),
+                V1RequestType::Unknown => {
+                    return Err(Error::builder()
+                        .kind(ErrorKind::UnsupportedType)
+                        .message("unsupported request type")
+                        .build());
+                }
                 V1RequestType::NodeExchanger => SessionType::NodeFinder,
             };
             if let Ok(permit) = self.senders.lock().await.get(&typ).unwrap().try_reserve() {
@@ -217,7 +225,10 @@ impl Inner {
 
             Ok(())
         } else {
-            Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)))
+            Err(Error::builder()
+                .kind(ErrorKind::UnsupportedVersion)
+                .message(format!("Unsupported session version: {:?}", version))
+                .build())
         }
     }
 }

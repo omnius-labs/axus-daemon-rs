@@ -24,7 +24,12 @@ impl RocketMessage for MerkleLayer {
     where
         Self: Sized,
     {
-        let get_too_large_err = || RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large");
+        let get_too_large_err = || {
+            RocketPackError::builder()
+                .kind(RocketPackErrorKind::TooLarge)
+                .message("len too large")
+                .build()
+        };
 
         let rank = reader.get_u32()?;
 

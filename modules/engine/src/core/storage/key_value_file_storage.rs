@@ -5,7 +5,7 @@ use std::{
 };
 
 use futures::Stream;
-use sqlx::{QueryBuilder, Sqlite, SqlitePool, migrate::MigrateDatabase as _};
+use sqlx::{QueryBuilder, SqlitePool};
 use tokio::{fs::create_dir_all, sync::Mutex};
 
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};

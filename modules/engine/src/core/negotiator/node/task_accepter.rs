@@ -100,7 +100,7 @@ impl TaskAccepter {
             .await
             .send((HandshakeType::Accepted, session))
             .await
-            .map_err(|e| Error::new(ErrorKind::UnexpectedError).source(e))?;
+            .map_err(|e| Error::builder().kind(ErrorKind::UnexpectedError).source(e).build())?;
 
         Ok(())
     }

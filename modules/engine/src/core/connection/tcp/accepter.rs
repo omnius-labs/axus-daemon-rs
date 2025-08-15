@@ -55,7 +55,7 @@ impl ConnectionTcpAccepterImpl {
             });
         }
 
-        Err(Error::new(ErrorKind::InvalidFormat).message("invalid address"))
+        Err(Error::builder().kind(ErrorKind::InvalidFormat).message("invalid address").build())
     }
 }
 
@@ -111,7 +111,7 @@ impl UpnpPortMapping {
         let res = UpnpClient::get_external_ip_address().await?;
         let external_ip = res
             .get("NewExternalIPAddress")
-            .ok_or_else(|| Error::new(ErrorKind::NotFound).message("not found external ip"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::NotFound).message("not found external ip").build())?;
         let external_ip = Ipv4Addr::from_str(external_ip.as_str())?;
         Ok(Self { port, external_ip })
     }

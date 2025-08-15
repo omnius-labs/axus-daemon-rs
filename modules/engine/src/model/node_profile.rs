@@ -1,5 +1,3 @@
-use std::fmt;
-
 use omnius_core_base::ensure_err;
 use omnius_core_omnikit::model::OmniAddr;
 
@@ -34,7 +32,12 @@ impl RocketMessage for NodeProfile {
     where
         Self: Sized,
     {
-        let get_too_large_err = || RocketPackError::new(RocketPackErrorKind::TooLarge).message("len too large");
+        let get_too_large_err = || {
+            RocketPackError::builder()
+                .kind(RocketPackErrorKind::TooLarge)
+                .message("len too large")
+                .build()
+        };
 
         let id = reader.get_bytes(128)?;
 

@@ -2,7 +2,6 @@ use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
 use parking_lot::Mutex;
-use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 
 use omnius_core_base::{
     clock::{Clock, ClockUtc},
@@ -16,10 +15,9 @@ use crate::{
         connection::{
             ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
         },
-        negotiator::{NodeFinder, NodeFinderOption, NodeFinderRepo, NodeProfileFetcher, NodeProfileFetcherImpl},
+        negotiator::{NodeFinder, NodeFinderOption, NodeFinderRepo, NodeProfileFetcherImpl},
         session::{SessionAccepter, SessionConnector},
     },
-    model::NodeProfile,
     prelude::*,
 };
 

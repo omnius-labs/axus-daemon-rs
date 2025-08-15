@@ -46,7 +46,7 @@ impl UpnpClient {
             return Ok(());
         }
 
-        Err(Error::new(ErrorKind::UpnpError).message("failed to add port mapping"))
+        Err(Error::builder().kind(ErrorKind::UpnpError).message("failed to add port mapping").build())
     }
 
     pub async fn delete_port_mapping(protocol: &str, external_port: u16) -> Result<()> {
@@ -73,7 +73,10 @@ impl UpnpClient {
             return Ok(());
         }
 
-        Err(Error::new(ErrorKind::UpnpError).message("failed to delete port mapping"))
+        Err(Error::builder()
+            .kind(ErrorKind::UpnpError)
+            .message("failed to delete port mapping")
+            .build())
     }
 
     pub async fn get_generic_port_mapping_entry(index: i32) -> Result<HashMap<String, String>> {
@@ -98,7 +101,10 @@ impl UpnpClient {
             return Ok(res.unwrap());
         }
 
-        Err(Error::new(ErrorKind::UpnpError).message("failed to get generic port mapping"))
+        Err(Error::builder()
+            .kind(ErrorKind::UpnpError)
+            .message("failed to get generic port mapping")
+            .build())
     }
 
     pub async fn get_external_ip_address() -> Result<HashMap<String, String>> {
@@ -122,12 +128,15 @@ impl UpnpClient {
             return Ok(res.unwrap());
         }
 
-        Err(Error::new(ErrorKind::UpnpError).message("failed to get external ip address"))
+        Err(Error::builder()
+            .kind(ErrorKind::UpnpError)
+            .message("failed to get external ip address")
+            .build())
     }
 
     async fn action(urn: &URN, name: &str, args: &str) -> Result<HashMap<String, String>> {
         let search_target = SearchTarget::URN(urn.clone());
-        let devices = rupnp::discover(&search_target, Duration::from_secs(3)).await?;
+        let devices = rupnp::discover(&search_target, Duration::from_secs(3), None).await?;
         pin_utils::pin_mut!(devices);
 
         while let Some(device) = devices.try_next().await? {
@@ -145,7 +154,10 @@ impl UpnpClient {
             return Ok(result.unwrap());
         }
 
-        Err(Error::new(ErrorKind::UpnpError).message(format!("failed to UPnP action: {}", name)))
+        Err(Error::builder()
+            .kind(ErrorKind::UpnpError)
+            .message(format!("failed to UPnP action: {}", name))
+            .build())
     }
 }
 

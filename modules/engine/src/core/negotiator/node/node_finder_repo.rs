@@ -2,8 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use chrono::Utc;
 use sqlx::QueryBuilder;
-use sqlx::migrate::MigrateDatabase;
-use sqlx::{Sqlite, sqlite::SqlitePool};
+use sqlx::sqlite::SqlitePool;
 
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
@@ -20,7 +19,7 @@ impl NodeFinderRepo {
         let path = Path::new(dir_path).join("sqlite.db");
         let path = path
             .to_str()
-            .ok_or_else(|| Error::new(ErrorKind::UnexpectedError).message("Invalid path"))?;
+            .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;
 
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(path)

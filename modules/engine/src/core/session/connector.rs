@@ -57,7 +57,7 @@ impl SessionConnector {
             let received_signature_message: V1SignatureMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_signature_message.cert.verify(send_nonce.as_slice()).is_err() {
-                return Err(Error::new(ErrorKind::InvalidFormat).message("Invalid signature"));
+                return Err(Error::builder().kind(ErrorKind::InvalidFormat).message("Invalid signature").build());
             }
 
             let send_session_request_message = V1RequestMessage {
@@ -69,7 +69,7 @@ impl SessionConnector {
             let received_session_result_message: V1ResultMessage = stream.receiver.lock().await.recv_message().await?;
 
             if received_session_result_message.result_type == V1ResultType::Reject {
-                return Err(Error::new(ErrorKind::Reject).message("Session rejected"));
+                return Err(Error::builder().kind(ErrorKind::Reject).message("Session rejected").build());
             }
 
             let session = Session {
@@ -82,7 +82,10 @@ impl SessionConnector {
 
             Ok(session)
         } else {
-            Err(Error::new(ErrorKind::UnsupportedVersion).message(format!("Unsupported session version: {:?}", version)))
+            Err(Error::builder()
+                .kind(ErrorKind::UnsupportedVersion)
+                .message(format!("Unsupported session version: {:?}", version))
+                .build())
         }
     }
 }
