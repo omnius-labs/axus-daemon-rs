@@ -8,6 +8,7 @@
         "Cbor",
         "chacha",
         "chrono",
+        "ciphertext",
         "clippy",
         "dalek",
         "Deque",

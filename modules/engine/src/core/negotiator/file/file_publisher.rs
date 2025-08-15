@@ -6,6 +6,6 @@ mod util;
 use super::*;
 #[allow(unused)]
 pub use publisher::*;
-pub use publisher_repo::*;
+use publisher_repo::*;
 use task_encoder::*;
 use util::*;

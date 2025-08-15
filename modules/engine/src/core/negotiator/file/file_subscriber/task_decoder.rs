@@ -1,17 +1,19 @@
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::FutureExt as _;
-use omnius_core_omnikit::model::OmniHash;
 use parking_lot::Mutex;
 use tokio::{
-    io::{AsyncWrite, AsyncWriteExt},
+    fs::File,
+    io::{AsyncWrite, AsyncWriteExt, BufWriter},
     sync::Mutex as TokioMutex,
     task::JoinHandle,
 };
+use tokio_util::bytes::Bytes;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
     core::{
@@ -182,12 +184,65 @@ impl TaskDecoder {
         }
 
         if file.rank == 0 {
-            // ファイルをエクスポートする
+            let blocks = self
+                .file_subscriber_repo
+                .find_blocks_by_root_hash_and_rank(&file.root_hash, file.rank)
+                .await?;
+
+            let block_hashes: Vec<OmniHash> = blocks.iter().map(|n| n.block_hash.clone()).collect();
+
+            let mut f = File::open(file.file_path).await?;
+            self.decode_bytes(&mut f, &file.root_hash, &block_hashes).await?;
+
+            self.file_subscriber_repo
+                .update_file_status(&file.id, &SubscribedFileStatus::Completed)
+                .await?;
         } else {
             let blocks = self
                 .file_subscriber_repo
                 .find_blocks_by_root_hash_and_rank(&file.root_hash, file.rank)
                 .await?;
+
+            let block_hashes: Vec<OmniHash> = blocks.iter().map(|n| n.block_hash.clone()).collect();
+
+            let bytes: Vec<u8> = Vec::new();
+            let cursor = Cursor::new(bytes);
+            let mut writer = BufWriter::new(cursor);
+            self.decode_bytes(&mut writer, &file.root_hash, &block_hashes).await?;
+
+            let cursor = writer.into_inner();
+            let bytes = cursor.into_inner();
+            let mut bytes = Bytes::from(bytes);
+            let merkle_layer = MerkleLayer::import(&mut bytes)?;
+
+            if merkle_layer.rank != (file.rank - 1) {
+                return Err(Error::builder().kind(ErrorKind::InvalidFormat).build());
+            }
+
+            let now = self.clock.now();
+
+            let new_file = SubscribedFile {
+                rank: merkle_layer.rank,
+                block_count_downloaded: 0,
+                block_count_total: merkle_layer.hashes.len() as u32,
+                status: SubscribedFileStatus::Downloading,
+                updated_at: now,
+                ..file
+            };
+            let new_blocks: Vec<SubscribedBlock> = merkle_layer
+                .hashes
+                .into_iter()
+                .enumerate()
+                .map(|(i, n)| SubscribedBlock {
+                    root_hash: new_file.root_hash.clone(),
+                    block_hash: n,
+                    rank: merkle_layer.rank,
+                    index: i as u32,
+                    downloaded: false,
+                })
+                .collect();
+
+            self.file_subscriber_repo.upsert_file_and_blocks(&new_file, &new_blocks).await?;
         }
 
         Ok(())

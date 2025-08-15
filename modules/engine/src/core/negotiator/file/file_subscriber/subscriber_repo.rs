@@ -17,7 +17,6 @@ pub struct FileSubscriberRepo {
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
 }
 
-#[allow(unused)]
 impl FileSubscriberRepo {
     pub async fn new<P: AsRef<Path>>(dir_path: P, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
         let path = dir_path.as_ref().join("sqlite.db");
@@ -238,7 +237,7 @@ SELECT *
         Ok(res)
     }
 
-    pub async fn find_blocks_by_root_hash_and_rank(&self, root_hash: &OmniHash, rank: i64) -> Result<Vec<SubscribedBlock>> {
+    pub async fn find_blocks_by_root_hash_and_rank(&self, root_hash: &OmniHash, rank: u32) -> Result<Vec<SubscribedBlock>> {
         let res: Vec<SubscribedBlockRow> = sqlx::query_as(
             r#"
 SELECT *
@@ -265,8 +264,9 @@ SELECT *
             let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
                 r#"
 INSERT INTO blocks (root_hash, block_hash, rank, `index`, downloaded)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(root_hash, block_hash, rank, `index`) DO UPDATE SET downloaded = '?'
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(root_hash, block_hash, rank, `index`) DO UPDATE SET
+        downloaded = excluded.downloaded
 "#,
             );
 
@@ -277,6 +277,71 @@ INSERT INTO blocks (root_hash, block_hash, rank, `index`, downloaded)
                 b.push_bind(row.block_hash);
                 b.push_bind(row.rank);
                 b.push_bind(row.index);
+                b.push_bind(row.downloaded);
+            });
+            query_builder.build().execute(&mut *tx).await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub async fn upsert_file_and_blocks(&self, file: &SubscribedFile, blocks: &[SubscribedBlock]) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        let row = SubscribedFileRow::from(file)?;
+        sqlx::query(
+            r#"
+INSERT INTO files (id, root_hash, file_path, rank, block_count_downloaded, block_count_total, attrs, priority, status, failed_reason, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        root_hash = excluded.root_hash,
+        file_path = excluded.file_path,
+        rank = excluded.rank,
+        block_count_downloaded = excluded.block_count_downloaded,
+        block_count_total = excluded.block_count_total,
+        attrs = excluded.attrs,
+        priority = excluded.priority,
+        status = excluded.status,
+        failed_reason = excluded.failed_reason,
+        updated_at = excluded.updated_at
+"#
+        )
+        .bind(row.id)
+        .bind(row.root_hash)
+        .bind(row.file_path)
+        .bind(row.rank)
+        .bind(row.block_count_downloaded)
+        .bind(row.block_count_total)
+        .bind(row.attrs)
+        .bind(row.priority)
+        .bind(row.status)
+        .bind(row.failed_reason)
+        .bind(row.updated_at)
+        .execute(&mut *tx)
+        .await?;
+
+        const CHUNK_SIZE: i64 = 100;
+
+        for chunk in blocks.chunks(CHUNK_SIZE as usize) {
+            let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+                r#"
+INSERT INTO blocks (root_hash, block_hash, rank, `index`, downloaded)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(root_hash, block_hash, rank, `index`) DO UPDATE SET
+        downloaded = excluded.downloaded
+"#,
+            );
+
+            let rows: Vec<SubscribedBlockRow> = chunk.iter().filter_map(|item| SubscribedBlockRow::from(item).ok()).collect();
+
+            query_builder.push_values(rows, |mut b, row| {
+                b.push_bind(row.root_hash);
+                b.push_bind(row.block_hash);
+                b.push_bind(row.rank);
+                b.push_bind(row.index);
+                b.push_bind(row.downloaded);
             });
             query_builder.build().execute(&mut *tx).await?;
         }
@@ -309,9 +374,9 @@ impl SubscribedFileRow {
             id: self.id,
             root_hash: OmniHash::from_str(self.root_hash.as_str()).unwrap(),
             file_path: self.file_path,
-            rank: self.rank,
-            block_count_downloaded: self.block_count_downloaded,
-            block_count_total: self.block_count_total,
+            rank: self.rank as u32,
+            block_count_downloaded: self.block_count_downloaded as u32,
+            block_count_total: self.block_count_total as u32,
             attrs: self.attrs,
             priority: self.priority,
             status: self.status,
@@ -327,9 +392,9 @@ impl SubscribedFileRow {
             id: item.id.to_string(),
             root_hash: item.root_hash.to_string(),
             file_path: item.file_path.clone(),
-            rank: item.rank,
-            block_count_downloaded: item.block_count_downloaded,
-            block_count_total: item.block_count_downloaded,
+            rank: item.rank as i64,
+            block_count_downloaded: item.block_count_downloaded as i64,
+            block_count_total: item.block_count_downloaded as i64,
             attrs: item.attrs.as_ref().map(|n| n.to_string()),
             priority: item.priority,
             status: item.status.clone(),

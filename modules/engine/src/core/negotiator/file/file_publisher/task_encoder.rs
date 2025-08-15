@@ -204,19 +204,18 @@ impl TaskEncoder {
             return Ok(());
         }
 
-        let mut file = File::open(uncommitted_file.file_path.as_str()).await?;
-
         let mut all_uncommitted_blocks: Vec<PublishedUncommittedBlock> = Vec::new();
         let mut current_block_hashes: Vec<OmniHash> = Vec::new();
 
-        let mut uncommitted_blocks = self.encode_bytes(&mut file, &uncommitted_file.id, uncommitted_file.block_size, 0).await?;
+        let mut f = File::open(uncommitted_file.file_path.as_str()).await?;
+        let mut uncommitted_blocks = self.encode_bytes(&mut f, &uncommitted_file.id, uncommitted_file.block_size, 0).await?;
         all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
         current_block_hashes.extend(uncommitted_blocks.iter().map(|block| block.block_hash.clone()));
 
-        let mut depth = 1;
+        let mut rank = 1;
         loop {
             let merkle_layer = MerkleLayer {
-                rank: depth,
+                rank,
                 hashes: std::mem::take(&mut current_block_hashes),
             };
 
@@ -226,7 +225,7 @@ impl TaskEncoder {
             let mut reader = BufReader::new(cursor);
 
             uncommitted_blocks = self
-                .encode_bytes(&mut reader, &uncommitted_file.id, uncommitted_file.block_size, depth)
+                .encode_bytes(&mut reader, &uncommitted_file.id, uncommitted_file.block_size, rank)
                 .await?;
             all_uncommitted_blocks.extend(uncommitted_blocks.iter().cloned());
             current_block_hashes = uncommitted_blocks.iter().map(|block| block.block_hash.clone()).collect();
@@ -235,7 +234,7 @@ impl TaskEncoder {
                 break;
             }
 
-            depth += 1;
+            rank += 1;
         }
 
         let root_hash = current_block_hashes.pop().unwrap();

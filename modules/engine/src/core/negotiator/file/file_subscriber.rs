@@ -6,6 +6,6 @@ mod util;
 use super::*;
 #[allow(unused)]
 pub use subscriber::*;
-pub use subscriber_repo::*;
+use subscriber_repo::*;
 use task_decoder::*;
 use util::*;

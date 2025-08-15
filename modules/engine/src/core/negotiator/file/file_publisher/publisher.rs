@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -42,13 +42,14 @@ impl Terminable for FilePublisher {
 impl FilePublisher {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        file_publisher_repo: Arc<FilePublisherRepo>,
-        blocks_storage: Arc<KeyValueFileStorage>,
-
+        state_dir_path: &Path,
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
+        let file_publisher_repo = Arc::new(FilePublisherRepo::new(state_dir_path.join("repo"), clock.clone()).await?);
+        let blocks_storage = Arc::new(KeyValueFileStorage::new(state_dir_path.join("blocks")).await?);
+
         let v = Arc::new(Self {
             file_publisher_repo,
             blocks_storage,
