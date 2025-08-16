@@ -65,8 +65,6 @@ impl AxusEngine {
         tokio::fs::create_dir_all(&node_finder_dir).await?;
 
         let result = NodeFinder::new(
-            tcp_connector,
-            tcp_accepter,
             session_connector,
             session_accepter,
             node_profile_repo,
