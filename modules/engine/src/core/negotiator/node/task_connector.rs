@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use rand::{SeedableRng, seq::IndexedRandom as _};
@@ -14,13 +15,13 @@ use tokio::{
 };
 use tracing::warn;
 
-use omnius_core_base::sleeper::Sleeper;
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     core::{
         session::{
             SessionConnector,
-            model::{Session, SessionType},
+            model::{SessionHandshakeType, SessionType},
         },
         util::{Terminable, VolatileHashSet},
     },
@@ -33,10 +34,11 @@ use super::*;
 #[derive(Clone)]
 pub struct TaskConnector {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+    session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
     session_connector: Arc<SessionConnector>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     node_profile_repo: Arc<NodeFinderRepo>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
@@ -55,10 +57,11 @@ impl Terminable for TaskConnector {
 impl TaskConnector {
     pub async fn new(
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+        session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
         session_connector: Arc<SessionConnector>,
         connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
         node_profile_repo: Arc<NodeFinderRepo>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
     ) -> Result<Arc<Self>> {
@@ -68,6 +71,7 @@ impl TaskConnector {
             session_connector,
             connected_node_profiles,
             node_profile_repo,
+            clock,
             sleeper,
             option,
             join_handle: Arc::new(TokioMutex::new(None)),
@@ -79,12 +83,11 @@ impl TaskConnector {
     }
 
     async fn start(self: Arc<Self>) -> Result<()> {
-        let sleeper = self.sleeper.clone();
-        let join_handle = self.join_handle.clone();
-        *join_handle.lock().await = Some(tokio::spawn(async move {
+        let this = self.clone();
+        *self.join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
-                sleeper.sleep(std::time::Duration::from_secs(1)).await;
-                let res = self.connect().await;
+                this.sleeper.sleep(std::time::Duration::from_secs(1)).await;
+                let res = this.connect().await;
                 if let Err(e) = res {
                     warn!(error_message = e.to_string(), "connect failed");
                 }
@@ -100,7 +103,7 @@ impl TaskConnector {
             .read()
             .await
             .iter()
-            .filter(|(_, status)| status.handshake_type == HandshakeType::Connected)
+            .filter(|(_, status)| status.session.handshake_type == SessionHandshakeType::Connected)
             .count();
         if session_count >= self.option.max_connected_session_count {
             return Ok(());
@@ -129,13 +132,17 @@ impl TaskConnector {
 
         for addr in node_profile.addrs.iter() {
             if let Ok(session) = self.session_connector.connect(addr, &SessionType::NodeFinder).await {
+                let status = SessionStatus::new(session, self.clock.clone());
                 self.session_sender
                     .lock()
                     .await
-                    .send((HandshakeType::Connected, session))
+                    .send(status)
                     .await
                     .map_err(|e| Error::builder().kind(ErrorKind::UnexpectedError).source(e).build())?;
+
                 self.connected_node_profiles.lock().insert(node_profile.clone());
+
+                return Ok(());
             }
         }
 

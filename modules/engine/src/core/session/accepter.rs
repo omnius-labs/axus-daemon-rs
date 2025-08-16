@@ -200,7 +200,8 @@ impl Inner {
                         .message("unsupported request type")
                         .build());
                 }
-                V1RequestType::NodeExchanger => SessionType::NodeFinder,
+                V1RequestType::NodeFinder => SessionType::NodeFinder,
+                V1RequestType::FileExchanger => SessionType::FileExchanger,
             };
             if let Ok(permit) = self.senders.lock().await.get(&typ).unwrap().try_reserve() {
                 let send_session_result_message = V1ResultMessage {

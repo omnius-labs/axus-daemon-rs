@@ -12,8 +12,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     core::{
-        connection::{ConnectionTcpAccepter, ConnectionTcpConnector},
-        session::{SessionAccepter, SessionConnector, model::Session},
+        session::{SessionAccepter, SessionConnector},
         util::{FnHub, Terminable, VolatileHashSet},
     },
     model::{AssetKey, NodeProfile},
@@ -25,8 +24,6 @@ use super::*;
 #[allow(dead_code)]
 pub struct NodeFinder {
     my_node_profile: Arc<Mutex<NodeProfile>>,
-    tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
-    tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     session_connector: Arc<SessionConnector>,
     session_accepter: Arc<SessionAccepter>,
     node_profile_repo: Arc<NodeFinderRepo>,
@@ -35,8 +32,8 @@ pub struct NodeFinder {
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOption,
 
-    session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
-    session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+    session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
+    session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
     get_want_asset_keys_fn: Arc<FnHub<Vec<AssetKey>, ()>>,
@@ -59,8 +56,6 @@ pub struct NodeFinderOption {
 impl NodeFinder {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync>,
-        tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         session_connector: Arc<SessionConnector>,
         session_accepter: Arc<SessionAccepter>,
         node_profile_repo: Arc<NodeFinderRepo>,
@@ -76,8 +71,6 @@ impl NodeFinder {
                 id: Self::gen_id(),
                 addrs: Vec::new(),
             })),
-            tcp_connector,
-            tcp_accepter,
             session_connector,
             session_accepter,
             node_profile_repo,
@@ -123,6 +116,7 @@ impl NodeFinder {
                 self.session_connector.clone(),
                 self.connected_node_profiles.clone(),
                 self.node_profile_repo.clone(),
+                self.clock.clone(),
                 self.sleeper.clone(),
                 self.option.clone(),
             )
@@ -135,6 +129,7 @@ impl NodeFinder {
                 self.sessions.clone(),
                 self.session_sender.clone(),
                 self.session_accepter.clone(),
+                self.clock.clone(),
                 self.sleeper.clone(),
                 self.option.clone(),
             )
@@ -169,6 +164,20 @@ impl NodeFinder {
 
         Ok(())
     }
+
+    pub async fn find_node_profile(&self, key: &AssetKey) -> Result<Vec<Arc<NodeProfile>>> {
+        let mut results: Vec<Arc<NodeProfile>> = Vec::new();
+
+        let sessions = self.sessions.read().await;
+        for status in sessions.values() {
+            let received_data_message = status.received_data_message.lock();
+            if let Some(node_profiles) = received_data_message.give_asset_key_locations.get(key) {
+                results.extend(node_profiles.clone());
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -201,7 +210,6 @@ impl Terminable for NodeFinder {
         }
 
         self.session_accepter.terminate().await;
-        self.tcp_accepter.terminate().await;
     }
 }
 
@@ -222,7 +230,9 @@ mod tests {
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
     use crate::core::{
-        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType},
+        connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+        },
         negotiator::NodeProfileFetcherMock,
     };
 
@@ -306,8 +316,6 @@ mod tests {
         fs::create_dir_all(&node_finder_dir)?;
 
         let result = NodeFinder::new(
-            tcp_connector,
-            tcp_accepter,
             session_connector,
             session_accepter,
             node_profile_repo,

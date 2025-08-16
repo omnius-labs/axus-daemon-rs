@@ -1,20 +1,20 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::FutureExt;
 use tokio::{
     sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc},
     task::JoinHandle,
 };
-use tracing::warn;
 
-use omnius_core_base::sleeper::Sleeper;
+use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
     core::{
         session::{
             SessionAccepter,
-            model::{Session, SessionType},
+            model::{SessionHandshakeType, SessionType},
         },
         util::Terminable,
     },
@@ -26,8 +26,9 @@ use super::*;
 #[derive(Clone)]
 pub struct TaskAccepter {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+    session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
     session_accepter: Arc<SessionAccepter>,
+    clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     option: NodeFinderOption,
     join_handle: Arc<TokioMutex<Option<JoinHandle<()>>>>,
@@ -46,8 +47,9 @@ impl Terminable for TaskAccepter {
 impl TaskAccepter {
     pub async fn new(
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-        session_sender: Arc<TokioMutex<mpsc::Sender<(HandshakeType, Session)>>>,
+        session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
         session_accepter: Arc<SessionAccepter>,
+        clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
     ) -> Result<Arc<Self>> {
@@ -55,6 +57,7 @@ impl TaskAccepter {
             sessions,
             session_sender,
             session_accepter,
+            clock,
             sleeper,
             option,
             join_handle: Arc::new(TokioMutex::new(None)),
@@ -66,12 +69,11 @@ impl TaskAccepter {
     }
 
     async fn start(self: Arc<Self>) -> Result<()> {
-        let sleeper = self.sleeper.clone();
-        let join_handle = self.join_handle.clone();
-        *join_handle.lock().await = Some(tokio::spawn(async move {
+        let this = self.clone();
+        *self.join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
-                sleeper.sleep(std::time::Duration::from_secs(1)).await;
-                let res = self.accept().await;
+                this.sleeper.sleep(std::time::Duration::from_secs(1)).await;
+                let res = this.accept().await;
                 if let Err(e) = res {
                     warn!("{:?}", e);
                 }
@@ -87,18 +89,19 @@ impl TaskAccepter {
             .read()
             .await
             .iter()
-            .filter(|(_, status)| status.handshake_type == HandshakeType::Accepted)
+            .filter(|(_, status)| status.session.handshake_type == SessionHandshakeType::Accepted)
             .count();
         if session_count >= self.option.max_accepted_session_count {
             return Ok(());
         }
 
         let session = self.session_accepter.accept(&SessionType::NodeFinder).await?;
+        let status = SessionStatus::new(session, self.clock.clone());
 
         self.session_sender
             .lock()
             .await
-            .send((HandshakeType::Accepted, session))
+            .send(status)
             .await
             .map_err(|e| Error::builder().kind(ErrorKind::UnexpectedError).source(e).build())?;
 

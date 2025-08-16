@@ -15,39 +15,28 @@ use crate::{
 
 #[derive(Clone)]
 pub struct SessionStatus {
-    pub handshake_type: HandshakeType,
     pub session: Session,
-    pub node_profile: NodeProfile,
-
+    pub node_profile: Arc<Mutex<Option<NodeProfile>>>,
     pub sending_data_message: Arc<Mutex<SendingDataMessage>>,
     pub received_data_message: Arc<Mutex<ReceivedDataMessage>>,
 }
 
 impl SessionStatus {
-    pub fn new(handshake_type: HandshakeType, session: Session, node_profile: NodeProfile, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
+    pub fn new(session: Session, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Self {
         Self {
-            handshake_type,
             session,
-            node_profile,
+            node_profile: Arc::new(Mutex::new(None)),
             sending_data_message: Arc::new(Mutex::new(SendingDataMessage::new())),
             received_data_message: Arc::new(Mutex::new(ReceivedDataMessage::new(clock))),
         }
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HandshakeType {
-    Unknown,
-    Connected,
-    Accepted,
-}
-
 pub struct SendingDataMessage {
-    pub push_node_profiles: Vec<NodeProfile>,
-    pub want_asset_keys: Vec<AssetKey>,
-    pub give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
-    pub push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+    pub push_node_profiles: Vec<Arc<NodeProfile>>,
+    pub want_asset_keys: Vec<Arc<AssetKey>>,
+    pub give_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
+    pub push_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
 }
 
 impl SendingDataMessage {

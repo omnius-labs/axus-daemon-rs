@@ -62,7 +62,8 @@ impl SessionConnector {
 
             let send_session_request_message = V1RequestMessage {
                 request_type: match typ {
-                    SessionType::NodeFinder => V1RequestType::NodeExchanger,
+                    SessionType::NodeFinder => V1RequestType::NodeFinder,
+                    SessionType::FileExchanger => V1RequestType::FileExchanger,
                 },
             };
             stream.sender.lock().await.send_message(&send_session_request_message).await?;

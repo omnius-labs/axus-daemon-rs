@@ -130,23 +130,21 @@ impl TaskEncoder {
     }
 
     async fn start(self: Arc<Self>) -> Result<()> {
-        let cancel_event_listener = self.cancel_event_listener.clone();
-
-        let join_handle = self.join_handle.clone();
-        *join_handle.lock().await = Some(tokio::spawn(async move {
+        let this = self.clone();
+        *self.join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    next = self.encode() => {
+                    next = this.encode() => {
                         if next {
                             continue;
                         }
                     }
-                    _ = cancel_event_listener.wait() => {
+                    _ = this.cancel_event_listener.wait() => {
                         info!("import task canceled");
                     }
                 };
 
-                self.enqueue_event_listener.wait().await;
+                this.enqueue_event_listener.wait().await;
             }
         }));
 

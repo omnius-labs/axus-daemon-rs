@@ -16,7 +16,7 @@ pub use crate::result::Result;
 pub use parking_lot::Mutex;
 
 #[allow(unused)]
-pub use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock};
+pub use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 
 #[allow(unused)]
 pub use tracing::{debug, error, info, trace, warn};

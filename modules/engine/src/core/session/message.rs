@@ -87,7 +87,8 @@ impl RocketMessage for V1SignatureMessage {
 #[derive(Debug, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum V1RequestType {
     Unknown = 0,
-    NodeExchanger = 1,
+    NodeFinder = 1,
+    FileExchanger = 2,
 }
 
 #[derive(Debug, PartialEq, Eq)]

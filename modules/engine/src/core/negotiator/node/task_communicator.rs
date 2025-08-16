@@ -11,7 +11,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
 
 use omnius_core_base::{clock::Clock, ensure_err, sleeper::Sleeper};
 
@@ -32,7 +31,7 @@ pub struct TaskCommunicator {
     my_node_profile: Arc<Mutex<NodeProfile>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     node_profile_repo: Arc<NodeFinderRepo>,
-    session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
+    session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     #[allow(unused)]
@@ -64,7 +63,7 @@ impl TaskCommunicator {
         my_node_profile: Arc<Mutex<NodeProfile>>,
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         node_profile_repo: Arc<NodeFinderRepo>,
-        session_receiver: Arc<TokioMutex<mpsc::Receiver<(HandshakeType, Session)>>>,
+        session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
@@ -90,23 +89,24 @@ impl TaskCommunicator {
     }
 
     async fn start(self: Arc<Self>) -> Result<()> {
-        let session_receiver = self.session_receiver.clone();
-        let join_handle = self.join_handle.clone();
-        let communicate_join_handles = self.communicate_join_handles.clone();
-        *join_handle.lock().await = Some(tokio::spawn(async move {
+        let this = self.clone();
+        *self.join_handle.lock().await = Some(tokio::spawn(async move {
             loop {
                 // 終了済みのタスクを削除
-                communicate_join_handles.lock().await.retain(|join_handle| !join_handle.is_finished());
+                this.communicate_join_handles
+                    .lock()
+                    .await
+                    .retain(|join_handle| !join_handle.is_finished());
 
-                if let Some((handshake_type, session)) = session_receiver.lock().await.recv().await {
-                    let this = self.clone();
+                if let Some(status) = this.session_receiver.lock().await.recv().await {
+                    let communicator = this.clone();
                     let join_handle = tokio::spawn(async move {
-                        let res = this.communicate(handshake_type, session).await;
+                        let res = communicator.communicate(status).await;
                         if let Err(e) = res {
                             warn!(error_message = e.to_string(), "communicate failed");
                         }
                     });
-                    communicate_join_handles.lock().await.push(join_handle);
+                    this.communicate_join_handles.lock().await.push(join_handle);
                 }
             }
         }));
@@ -114,35 +114,32 @@ impl TaskCommunicator {
         Ok(())
     }
 
-    async fn communicate(&self, handshake_type: HandshakeType, session: Session) -> Result<()> {
+    async fn communicate(self: Arc<Self>, status: SessionStatus) -> Result<()> {
         let my_node_profile = self.my_node_profile.lock().clone();
-        let other_node_profile = Self::handshake(&session, &my_node_profile).await?;
+        let other_node_profile = Self::handshake(&status.session, &my_node_profile).await?;
 
-        let status = Arc::new(SessionStatus::new(
-            handshake_type,
-            session,
-            other_node_profile.clone(),
-            self.clock.clone(),
-        ));
+        *status.node_profile.lock() = Some(other_node_profile.clone());
+
+        let status = Arc::new(status);
 
         {
             let mut sessions = self.sessions.write().await;
-            if sessions.contains_key(&status.node_profile.id) {
+            if sessions.contains_key(&other_node_profile.id) {
                 return Err(Error::builder()
                     .kind(ErrorKind::AlreadyConnected)
                     .message("Session already exists")
                     .build());
             }
-            sessions.insert(status.node_profile.id.clone(), status.clone());
+            sessions.insert(other_node_profile.id.clone(), status.clone());
         }
 
-        info!(node_profile = status.node_profile.to_string(), "Session established");
+        info!(node_profile = other_node_profile.to_string(), "Session established");
 
-        let s = self.send(status.clone()).await;
-        let r = self.receive(status.clone()).await;
+        let s = self.clone().send(status.clone()).await;
+        let r = self.clone().receive(status.clone()).await;
         let _ = tokio::join!(s, r);
 
-        info!(node_profile = status.node_profile.to_string(), "Session closed");
+        info!(node_profile = other_node_profile.to_string(), "Session closed");
 
         {
             let mut sessions = self.sessions.write().await;
@@ -174,14 +171,13 @@ impl TaskCommunicator {
         }
     }
 
-    async fn send(&self, status: Arc<SessionStatus>) -> JoinHandle<()> {
-        let sender = TaskSender { status: status.clone() };
-        let sleeper = self.sleeper.clone();
-        let cancellation_token = self.cancellation_token.clone();
+    async fn send(self: Arc<Self>, status: Arc<SessionStatus>) -> JoinHandle<()> {
+        let this = self.clone();
         tokio::spawn(async move {
+            let sender = TaskSender { status };
             let f = async {
                 loop {
-                    sleeper.sleep(std::time::Duration::from_secs(20)).await;
+                    this.sleeper.sleep(std::time::Duration::from_secs(20)).await;
                     let res = sender.send().await;
                     if let Err(e) = res {
                         warn!(error_message = e.to_string(), "send failed",);
@@ -190,23 +186,22 @@ impl TaskCommunicator {
                 }
             };
             select! {
-                _ = cancellation_token.cancelled() => {}
                 _ = f => {}
+                _ = this.cancellation_token.cancelled() => {}
             };
         })
     }
 
-    async fn receive(&self, status: Arc<SessionStatus>) -> JoinHandle<()> {
-        let receiver = TaskReceiver {
-            status: status.clone(),
-            node_profile_repo: self.node_profile_repo.clone(),
-        };
-        let sleeper = self.sleeper.clone();
-        let cancellation_token = self.cancellation_token.clone();
+    async fn receive(self: Arc<Self>, status: Arc<SessionStatus>) -> JoinHandle<()> {
+        let this = self.clone();
         tokio::spawn(async move {
+            let receiver = TaskReceiver {
+                status,
+                node_profile_repo: this.node_profile_repo.clone(),
+            };
             let f = async {
                 loop {
-                    sleeper.sleep(std::time::Duration::from_secs(20)).await;
+                    this.sleeper.sleep(std::time::Duration::from_secs(20)).await;
                     let res = receiver.receive().await;
                     if let Err(e) = res {
                         warn!(error_message = e.to_string(), "receive failed",);
@@ -215,8 +210,8 @@ impl TaskCommunicator {
                 }
             };
             select! {
-                _ = cancellation_token.cancelled() => {}
                 _ = f => {}
+                _ = this.cancellation_token.cancelled() => {}
             }
         })
     }
@@ -253,27 +248,19 @@ impl TaskReceiver {
     async fn receive(&self) -> Result<()> {
         let data_message = self.status.session.stream.receiver.lock().await.recv_message::<DataMessage>().await?;
 
-        let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).collect();
+        let push_node_profiles: Vec<&NodeProfile> = data_message.push_node_profiles.iter().take(32).map(|n| n.as_ref()).collect();
         self.node_profile_repo.insert_or_ignore_node_profiles(&push_node_profiles, 0).await?;
         self.node_profile_repo.shrink(1024).await?;
 
         {
             let mut received_data_message = self.status.received_data_message.lock();
+            received_data_message.want_asset_keys.extend(data_message.want_asset_keys);
             received_data_message
-                .want_asset_keys
-                .extend(data_message.want_asset_keys.into_iter().map(Arc::new));
-            received_data_message.give_asset_key_locations.extend(
-                data_message
-                    .give_asset_key_locations
-                    .into_iter()
-                    .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
-            );
-            received_data_message.push_asset_key_locations.extend(
-                data_message
-                    .push_asset_key_locations
-                    .into_iter()
-                    .map(|(k, v)| (Arc::new(k), v.into_iter().map(Arc::new).collect())),
-            );
+                .give_asset_key_locations
+                .extend(data_message.give_asset_key_locations);
+            received_data_message
+                .push_asset_key_locations
+                .extend(data_message.push_asset_key_locations);
 
             received_data_message.want_asset_keys.shrink(1024 * 256);
             received_data_message.give_asset_key_locations.shrink(1024 * 256);
@@ -342,10 +329,10 @@ impl RocketMessage for ProfileMessage {
 
 #[derive(Debug, PartialEq, Eq)]
 struct DataMessage {
-    pub push_node_profiles: Vec<NodeProfile>,
-    pub want_asset_keys: Vec<AssetKey>,
-    pub give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
-    pub push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>>,
+    pub push_node_profiles: Vec<Arc<NodeProfile>>,
+    pub want_asset_keys: Vec<Arc<AssetKey>>,
+    pub give_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
+    pub push_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>>,
 }
 
 impl DataMessage {
@@ -414,7 +401,7 @@ impl RocketMessage for DataMessage {
 
         let mut push_node_profiles = Vec::with_capacity(len);
         for _ in 0..len {
-            push_node_profiles.push(NodeProfile::unpack(reader, depth + 1)?);
+            push_node_profiles.push(Arc::new(NodeProfile::unpack(reader, depth + 1)?));
         }
 
         let len = reader.get_u32()? as usize;
@@ -422,21 +409,21 @@ impl RocketMessage for DataMessage {
 
         let mut want_asset_keys = Vec::with_capacity(len);
         for _ in 0..len {
-            want_asset_keys.push(AssetKey::unpack(reader, depth + 1)?);
+            want_asset_keys.push(Arc::new(AssetKey::unpack(reader, depth + 1)?));
         }
 
         let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
-        let mut give_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
+        let mut give_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>> = HashMap::new();
         for _ in 0..len {
-            let key = AssetKey::unpack(reader, depth + 1)?;
+            let key = Arc::new(AssetKey::unpack(reader, depth + 1)?);
             let len = reader.get_u32()? as usize;
             ensure_err!(len > 128, get_too_large_err);
 
             let mut vs = Vec::with_capacity(len);
             for _ in 0..len {
-                vs.push(NodeProfile::unpack(reader, depth + 1)?);
+                vs.push(Arc::new(NodeProfile::unpack(reader, depth + 1)?));
             }
             give_asset_key_locations.entry(key).or_default().extend(vs);
         }
@@ -444,15 +431,15 @@ impl RocketMessage for DataMessage {
         let len = reader.get_u32()? as usize;
         ensure_err!(len > 128, get_too_large_err);
 
-        let mut push_asset_key_locations: HashMap<AssetKey, Vec<NodeProfile>> = HashMap::new();
+        let mut push_asset_key_locations: HashMap<Arc<AssetKey>, Vec<Arc<NodeProfile>>> = HashMap::new();
         for _ in 0..len {
-            let key = AssetKey::unpack(reader, depth + 1)?;
+            let key = Arc::new(AssetKey::unpack(reader, depth + 1)?);
             let len = reader.get_u32()? as usize;
             ensure_err!(len > 128, get_too_large_err);
 
             let mut vs = Vec::with_capacity(len);
             for _ in 0..len {
-                vs.push(NodeProfile::unpack(reader, depth + 1)?);
+                vs.push(Arc::new(NodeProfile::unpack(reader, depth + 1)?));
             }
             push_asset_key_locations.entry(key).or_default().extend(vs);
         }

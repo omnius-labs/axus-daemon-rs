@@ -77,15 +77,14 @@ impl TaskComputer {
     }
 
     async fn start(self: Arc<Self>) -> Result<()> {
-        let sleeper = self.sleeper.clone();
-        let join_handle = self.join_handle.clone();
-        *join_handle.lock().await = Some(tokio::spawn(async move {
-            if let Err(e) = self.set_initial_node_profile().await {
+        let this = self.clone();
+        *self.join_handle.lock().await = Some(tokio::spawn(async move {
+            if let Err(e) = this.set_initial_node_profile().await {
                 warn!(error_message = e.to_string(), "set initial node profile failed");
             }
             loop {
-                sleeper.sleep(std::time::Duration::from_secs(60)).await;
-                let res = self.compute().await;
+                this.sleeper.sleep(std::time::Duration::from_secs(60)).await;
+                let res = this.compute().await;
                 if let Err(e) = res {
                     warn!(error_message = e.to_string(), "compute failed");
                 }
@@ -228,7 +227,7 @@ impl TaskComputer {
         // Session毎にデータを実体化する
         let mut sending_data_map: HashMap<Vec<u8>, SendingDataMessage> = HashMap::new();
 
-        let push_node_profiles: Vec<NodeProfile> = push_node_profiles.into_iter().map(|n| n.as_ref().clone()).collect();
+        let push_node_profiles: Vec<Arc<NodeProfile>> = push_node_profiles.into_iter().collect();
 
         for id in received_data_map.keys() {
             let want_asset_keys = sending_want_asset_key_map
@@ -236,21 +235,21 @@ impl TaskComputer {
                 .unwrap_or(&Vec::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|n| n.as_ref().clone())
+                .map(|n| n.clone())
                 .collect();
             let give_asset_key_locations = sending_give_asset_key_location_map
                 .get(id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| (k.as_ref().clone(), v.iter().map(|n| n.as_ref().clone()).collect()))
+                .map(|(k, v)| (k.clone(), v.iter().map(|n| n.clone()).collect()))
                 .collect();
             let push_asset_key_locations = sending_push_asset_key_location_map
                 .get(id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| (k.as_ref().clone(), v.iter().map(|n| n.as_ref().clone()).collect()))
+                .map(|(k, v)| (k.clone(), v.iter().map(|n| n.clone()).collect()))
                 .collect();
 
             let data_message = SendingDataMessage {

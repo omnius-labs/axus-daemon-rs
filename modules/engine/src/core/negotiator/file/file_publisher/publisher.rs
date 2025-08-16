@@ -6,6 +6,7 @@ use parking_lot::Mutex;
 use tokio::sync::Mutex as TokioMutex;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
     core::{storage::KeyValueFileStorage, util::Terminable},
@@ -77,6 +78,12 @@ impl FilePublisher {
         self.task_encoder.lock().await.replace(task);
 
         Ok(())
+    }
+
+    pub async fn get_published_root_hashes(&self) -> Result<Vec<OmniHash>> {
+        let files = self.file_publisher_repo.get_committed_files().await?;
+        let root_hashes = files.iter().map(|n| n.root_hash.clone()).collect();
+        Ok(root_hashes)
     }
 }
 

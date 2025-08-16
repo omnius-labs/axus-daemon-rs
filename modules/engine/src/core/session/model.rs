@@ -5,6 +5,7 @@ use crate::core::connection::FramedStream;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionType {
     NodeFinder,
+    FileExchanger,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

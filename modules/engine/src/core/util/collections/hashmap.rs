@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
@@ -59,22 +60,38 @@ where
         );
     }
 
-    pub fn extend(&mut self, iter: impl IntoIterator<Item = (K, V)>) {
+    pub fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         let now = self.clock.now();
         self.map
             .extend(iter.into_iter().map(|(k, v)| (k, ValueEntry { value: v, created_time: now })));
     }
 
-    pub fn contains_key(&self, key: &K) -> bool {
-        self.map.contains_key(key)
+    pub fn contains_key<Q>(&self, k: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.contains_key(k)
     }
 
-    pub fn remove(&mut self, key: &K) {
-        self.map.remove(key);
+    pub fn get<Q>(&self, k: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get(k).as_ref().map(|n| &n.value)
+    }
+
+    pub fn remove<Q>(&mut self, k: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.remove(k).map(|n| n.value)
     }
 
     pub fn clear(&mut self) {
-        self.map.clear();
+        self.map.clear()
     }
 
     pub fn len(&self) -> usize {
