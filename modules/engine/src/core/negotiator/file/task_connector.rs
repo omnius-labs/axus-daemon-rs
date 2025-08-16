@@ -19,6 +19,7 @@ use tokio::{
 use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
+use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
     core::{
@@ -61,6 +62,7 @@ impl Terminable for TaskConnector {
 }
 
 impl TaskConnector {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
@@ -107,6 +109,20 @@ impl TaskConnector {
             self.join_handles.lock().await.push(join_handle);
         }
 
+        {
+            let this = self.clone();
+            let join_handle = tokio::spawn(async move {
+                loop {
+                    this.sleeper.sleep(std::time::Duration::from_secs(1)).await;
+                    let res = this.connect_for_subscribe().await;
+                    if let Err(e) = res {
+                        warn!(error_message = e.to_string(), "connect failed");
+                    }
+                }
+            });
+            self.join_handles.lock().await.push(join_handle);
+        }
+
         Ok(())
     }
 
@@ -122,6 +138,39 @@ impl TaskConnector {
             return Ok(());
         }
 
+        let root_hashes = {
+            if let Some(file_publisher) = self.file_publisher.lock().await.as_ref() {
+                file_publisher.as_ref().get_published_root_hashes().await?
+            } else {
+                return Ok(());
+            }
+        };
+        self.connect_sub(ExchangeType::Publish, root_hashes).await
+    }
+
+    async fn connect_for_subscribe(&self) -> Result<()> {
+        let session_count = self
+            .sessions
+            .read()
+            .await
+            .iter()
+            .filter(|(_, status)| status.session.handshake_type == SessionHandshakeType::Connected && status.exchange_type == ExchangeType::Subscribe)
+            .count();
+        if session_count >= self.option.max_connected_session_for_subscribe {
+            return Ok(());
+        }
+
+        let root_hashes = {
+            if let Some(file_subscriber) = self.file_subscriber.lock().await.as_ref() {
+                file_subscriber.as_ref().get_subscribed_root_hashes().await?
+            } else {
+                return Ok(());
+            }
+        };
+        self.connect_sub(ExchangeType::Subscribe, root_hashes).await
+    }
+
+    async fn connect_sub(&self, exchange_type: ExchangeType, root_hashes: Vec<OmniHash>) -> Result<()> {
         self.connected_node_profiles.lock().refresh();
 
         let connected_ids: HashSet<Vec<u8>> = {
@@ -130,22 +179,18 @@ impl TaskConnector {
             v1.into_iter().chain(v2.into_iter()).collect()
         };
 
-        let mut root_hashes = {
-            if let Some(file_publisher) = self.file_publisher.lock().await.as_ref() {
-                file_publisher.as_ref().get_published_root_hashes().await?
-            } else {
-                vec![]
-            }
-        };
+        let mut asset_keys: Vec<AssetKey> = root_hashes
+            .into_iter()
+            .map(|hash| AssetKey {
+                typ: "file".to_string(),
+                hash,
+            })
+            .collect();
 
         let mut rng = ChaCha20Rng::from_os_rng();
-        root_hashes.shuffle(&mut rng);
+        asset_keys.shuffle(&mut rng);
 
-        for root_hash in root_hashes {
-            let asset_key = AssetKey {
-                typ: "file".to_string(),
-                hash: root_hash.clone(),
-            };
+        for asset_key in asset_keys {
             let node_profiles: Vec<Arc<NodeProfile>> = self
                 .node_finder
                 .find_node_profile(&asset_key)
@@ -159,7 +204,7 @@ impl TaskConnector {
 
             for addr in node_profile.addrs.iter() {
                 if let Ok(session) = self.session_connector.connect(addr, &SessionType::FileExchanger).await {
-                    let status = SessionStatus::new(ExchangeType::Publish, session, Some(root_hash.clone()), self.clock.clone());
+                    let status = SessionStatus::new(exchange_type, session, Some(asset_key.hash.clone()), self.clock.clone());
                     self.session_sender
                         .lock()
                         .await

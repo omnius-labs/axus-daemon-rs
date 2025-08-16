@@ -31,11 +31,14 @@ pub struct FileExchanger {
     session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
     session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
-    connected_node_profiles: Arc<Mutex<VolatileHashSet<NodeProfile>>>,
+    connected_node_profiles: Arc<Mutex<VolatileHashSet<Arc<NodeProfile>>>>,
     push_asset_keys: Arc<Mutex<Vec<AssetKey>>>,
     want_asset_keys: Arc<Mutex<Vec<AssetKey>>>,
 
     file_publisher: Arc<TokioMutex<Option<Arc<FilePublisher>>>>,
+    file_subscriber: Arc<TokioMutex<Option<Arc<FileSubscriber>>>>,
+
+    task_connectors: Arc<TokioMutex<Vec<Arc<TaskConnector>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +80,9 @@ impl FileExchanger {
             want_asset_keys: Arc::new(Mutex::new(vec![])),
 
             file_publisher: Arc::new(TokioMutex::new(None)),
+            file_subscriber: Arc::new(TokioMutex::new(None)),
+
+            task_connectors: Arc::new(TokioMutex::new(Vec::new())),
         };
         v.start().await;
 
@@ -88,6 +94,29 @@ impl FileExchanger {
             let state_dir_path = self.option.state_dir_path.join("file_publisher");
             let file_publisher = FilePublisher::new(&state_dir_path, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
             self.file_publisher.lock().await.replace(file_publisher);
+        }
+
+        {
+            let state_dir_path = self.option.state_dir_path.join("file_subscriber");
+            let file_subscriber = FileSubscriber::new(&state_dir_path, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
+            self.file_subscriber.lock().await.replace(file_subscriber);
+        }
+
+        for _ in 0..3 {
+            let task = TaskConnector::new(
+                self.sessions.clone(),
+                self.session_sender.clone(),
+                self.session_connector.clone(),
+                self.node_finder.clone(),
+                self.file_publisher.clone(),
+                self.file_subscriber.clone(),
+                self.connected_node_profiles.clone(),
+                self.clock.clone(),
+                self.sleeper.clone(),
+                self.option.clone(),
+            )
+            .await?;
+            self.task_connectors.lock().await.push(task);
         }
 
         Ok(())

@@ -73,6 +73,20 @@ CREATE INDEX IF NOT EXISTS index_root_hash_rank_index_for_blocks ON blocks (root
         Ok(())
     }
 
+    pub async fn get_committed_files(&self) -> Result<Vec<SubscribedFile>> {
+        let res: Vec<SubscribedFileRow> = sqlx::query_as(
+            r#"
+SELECT *
+    FROM files
+"#,
+        )
+        .fetch_all(self.db.as_ref())
+        .await?;
+
+        let res: Vec<SubscribedFile> = res.into_iter().filter_map(|r| r.into().ok()).collect();
+        Ok(res)
+    }
+
     pub async fn find_file_by_id(&self, id: &str) -> Result<Option<SubscribedFile>> {
         let res: Option<SubscribedFileRow> = sqlx::query_as(
             r#"

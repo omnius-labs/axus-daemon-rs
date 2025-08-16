@@ -55,6 +55,7 @@ impl Terminable for TaskConnector {
 }
 
 impl TaskConnector {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         session_sender: Arc<TokioMutex<mpsc::Sender<SessionStatus>>>,

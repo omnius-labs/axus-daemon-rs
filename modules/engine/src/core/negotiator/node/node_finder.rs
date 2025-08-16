@@ -155,7 +155,6 @@ impl NodeFinder {
             self.sessions.clone(),
             self.node_profile_repo.clone(),
             self.session_receiver.clone(),
-            self.clock.clone(),
             self.sleeper.clone(),
             self.option.clone(),
         )

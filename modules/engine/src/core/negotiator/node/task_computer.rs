@@ -235,21 +235,21 @@ impl TaskComputer {
                 .unwrap_or(&Vec::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|n| n.clone())
+                .cloned()
                 .collect();
             let give_asset_key_locations = sending_give_asset_key_location_map
                 .get(id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| (k.clone(), v.iter().map(|n| n.clone()).collect()))
+                .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
                 .collect();
             let push_asset_key_locations = sending_push_asset_key_location_map
                 .get(id.as_slice())
                 .unwrap_or(&HashMap::new())
                 .iter()
                 .take(1024 * 256)
-                .map(|(k, v)| (k.clone(), v.iter().map(|n| n.clone()).collect()))
+                .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
                 .collect();
 
             let data_message = SendingDataMessage {

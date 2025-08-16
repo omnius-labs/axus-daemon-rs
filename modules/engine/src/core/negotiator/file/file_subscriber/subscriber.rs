@@ -81,6 +81,12 @@ impl FileSubscriber {
         Ok(())
     }
 
+    pub async fn get_subscribed_root_hashes(&self) -> Result<Vec<OmniHash>> {
+        let files = self.file_subscriber_repo.get_committed_files().await?;
+        let root_hashes = files.iter().map(|n| n.root_hash.clone()).collect();
+        Ok(root_hashes)
+    }
+
     pub async fn write_block(&self, root_hash: &OmniHash, block_hash: &OmniHash, value: &Bytes) -> Result<()> {
         let blocks = self
             .file_subscriber_repo

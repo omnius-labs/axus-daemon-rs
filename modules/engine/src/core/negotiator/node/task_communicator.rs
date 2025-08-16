@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use bitflags::bitflags;
-use chrono::Utc;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use tokio::{
@@ -12,7 +11,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use omnius_core_base::{clock::Clock, ensure_err, sleeper::Sleeper};
+use omnius_core_base::{ensure_err, sleeper::Sleeper};
 
 use crate::{
     core::{
@@ -32,7 +31,6 @@ pub struct TaskCommunicator {
     sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
     node_profile_repo: Arc<NodeFinderRepo>,
     session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
-    clock: Arc<dyn Clock<Utc> + Send + Sync>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
     #[allow(unused)]
     option: NodeFinderOption,
@@ -64,7 +62,6 @@ impl TaskCommunicator {
         sessions: Arc<TokioRwLock<HashMap<Vec<u8>, Arc<SessionStatus>>>>,
         node_profile_repo: Arc<NodeFinderRepo>,
         session_receiver: Arc<TokioMutex<mpsc::Receiver<SessionStatus>>>,
-        clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
         option: NodeFinderOption,
     ) -> Result<Arc<Self>> {
@@ -75,7 +72,6 @@ impl TaskCommunicator {
             sessions,
             node_profile_repo,
             session_receiver,
-            clock,
             sleeper,
             option,
             join_handle: Arc::new(TokioMutex::new(None)),
