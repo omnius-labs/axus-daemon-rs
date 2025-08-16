@@ -138,12 +138,8 @@ impl std::fmt::Display for ErrorKind {
 }
 
 impl From<std::convert::Infallible> for Error {
-    fn from(e: std::convert::Infallible) -> Self {
-        Error::builder()
-            .kind(ErrorKind::InvalidFormat)
-            .message("convert failed")
-            .source(e)
-            .build()
+    fn from(_: std::convert::Infallible) -> Self {
+        Error::builder().build()
     }
 }
 
