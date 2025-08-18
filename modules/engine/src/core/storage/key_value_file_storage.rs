@@ -1,43 +1,40 @@
-use std::{
-    path::{Path, PathBuf},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{path::Path, pin::Pin, sync::Arc};
 
 use futures::Stream;
 use sqlx::{QueryBuilder, SqlitePool};
-use tokio::{fs::create_dir_all, sync::Mutex};
 
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
 use crate::prelude::*;
 
+mod rocksdb_storage;
+
+use rocksdb_storage::*;
+
 pub struct KeyValueFileStorage {
-    dir_path: PathBuf,
     db: Arc<SqlitePool>,
-    lock: Mutex<()>,
+    storage: Arc<RocksdbStorage>,
 }
 
 impl KeyValueFileStorage {
     #[allow(unused)]
     pub async fn new<P: AsRef<Path>>(dir_path: P) -> Result<Self> {
         let dir_path = dir_path.as_ref().to_path_buf();
-        let sqlite_path = dir_path.join("sqlite.db");
+        tokio::fs::create_dir_all(&dir_path).await?;
 
+        let sqlite_path = dir_path.join("sqlite.db");
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(sqlite_path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .busy_timeout(std::time::Duration::from_secs(10));
-
         let db = Arc::new(SqlitePool::connect_with(options).await?);
         Self::migrate(&db).await?;
 
-        Ok(Self {
-            dir_path,
-            db,
-            lock: Mutex::new(()),
-        })
+        let rocksdb_path = dir_path.join("rocksdb");
+        let storage = Arc::new(RocksdbStorage::new(rocksdb_path)?);
+
+        Ok(Self { db, storage })
     }
 
     async fn migrate(db: &SqlitePool) -> Result<()> {
@@ -46,8 +43,9 @@ impl KeyValueFileStorage {
             queries: r#"
 CREATE TABLE IF NOT EXISTS keys (
     id INTEGER NOT NULL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS unique_index_name_for_keys ON keys (name);
 "#
             .to_string(),
         }];
@@ -58,8 +56,6 @@ CREATE TABLE IF NOT EXISTS keys (
     }
 
     pub async fn rename_key(&self, old_key: &str, new_key: &str) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let result = sqlx::query("UPDATE keys SET name = ? WHERE name = ?")
             .bind(new_key)
             .bind(old_key)
@@ -71,8 +67,6 @@ CREATE TABLE IF NOT EXISTS keys (
 
     #[allow(unused)]
     pub async fn contains_key(&self, key: &str) -> Result<bool> {
-        let _guard = self.lock.lock().await;
-
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(1) FROM keys WHERE name = ? LIMIT 1")
             .bind(key)
             .fetch_one(self.db.as_ref())
@@ -85,23 +79,23 @@ CREATE TABLE IF NOT EXISTS keys (
     pub async fn get_keys(&self) -> Result<Pin<Box<impl Stream<Item = Result<String>>>>> {
         const CHUNK_SIZE: i64 = 500;
 
-        let _guard = self.lock.lock().await;
-
         let mut offset = 0;
-        let db = self.db.clone();
+
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
 
         Ok(Box::pin(async_stream::try_stream! {
             loop {
                 let keys: Vec<String> = sqlx::query_as::<_, (String,)>("SELECT name FROM keys LIMIT ? OFFSET ?")
                     .bind(CHUNK_SIZE)
                     .bind(offset)
-                    .fetch_all(db.as_ref())
+                    .fetch_all(&mut *tx)
                     .await?
                     .into_iter()
                     .map(|row| row.0)
                     .collect();
 
                 if keys.is_empty() {
+                    tx.commit().await?;
                     break;
                 }
 
@@ -115,47 +109,68 @@ CREATE TABLE IF NOT EXISTS keys (
     }
 
     pub async fn get_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        let _guard = self.lock.lock().await;
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
 
-        let id = self.get_id(key).await?;
-        if id.is_none() {
+        let result: Option<(i64,)> = sqlx::query_as("SELECT id FROM keys WHERE name = ? LIMIT 1")
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some((id,)) = result else {
             return Ok(None);
-        }
-        let id = id.unwrap();
+        };
 
-        let file_path = self.gen_file_path(id).await?;
-        let bytes = tokio::fs::read(file_path).await?;
+        let result = self.storage.get_value(id.to_le_bytes())?;
 
-        Ok(Some(bytes))
+        tx.commit().await?;
+
+        Ok(result)
     }
 
     pub async fn put_value(&self, key: &str, value: &[u8]) -> Result<()> {
-        let _guard = self.lock.lock().await;
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
 
-        let id = self.put_id(key).await?;
-        let file_path = self.gen_file_path(id).await?;
-        tokio::fs::write(file_path, value).await?;
+        let result: Option<(i64,)> = sqlx::query_as("SELECT id FROM keys WHERE name = ? LIMIT 1")
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        let id = match result {
+            Some((id,)) => id,
+            None => {
+                let (id,): (i64,) = sqlx::query_as("INSERT INTO keys (name) VALUES (?) RETURNING id")
+                    .bind(key)
+                    .fetch_one(self.db.as_ref())
+                    .await?;
+                id
+            }
+        };
+
+        self.storage.put_value(id.to_le_bytes(), value)?;
+
+        tx.commit().await?;
 
         Ok(())
     }
 
     pub async fn delete_key(&self, key: &str) -> Result<bool> {
-        let _guard = self.lock.lock().await;
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
 
-        let id = self.get_id(key).await?;
-        if id.is_none() {
+        let result: Option<(i64,)> = sqlx::query_as("SELECT id FROM keys WHERE name = ? LIMIT 1")
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some((id,)) = result else {
             return Ok(false);
-        }
-        let id = id.unwrap();
+        };
 
         let result = sqlx::query("DELETE FROM keys WHERE name = ?").bind(key).execute(self.db.as_ref()).await?;
-
         if result.rows_affected() == 0 {
             return Ok(false);
         }
 
-        let file_path = self.gen_file_path(id).await?;
-        tokio::fs::remove_file(file_path).await?;
+        self.storage.delete(id.to_le_bytes())?;
+
+        tx.commit().await?;
 
         Ok(true)
     }
@@ -165,11 +180,10 @@ CREATE TABLE IF NOT EXISTS keys (
     where
         T: Fn(&str) -> bool,
     {
-        const CHUNK_SIZE: i64 = 100;
+        const CHUNK_SIZE: i64 = 500;
 
-        let _guard = self.lock.lock().await;
+        let mut tx = self.db.begin_with("BEGIN EXCLUSIVE").await?;
 
-        let mut tx = self.db.begin().await?;
         sqlx::query(
             r#"
 CREATE TEMP TABLE unused_keys (
@@ -196,12 +210,14 @@ CREATE TEMP TABLE unused_keys (
 
             let unused_ids: Vec<i64> = keys.into_iter().filter(|key| !exclude_key(&key.name)).map(|key| key.id).collect();
 
-            let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("INSERT INTO unused_keys (id)");
+            if !unused_ids.is_empty() {
+                let mut query_builder: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("INSERT INTO unused_keys (id)");
 
-            query_builder.push_values(unused_ids, |mut b, id| {
-                b.push_bind(id);
-            });
-            query_builder.build().execute(&mut *tx).await?;
+                query_builder.push_values(unused_ids, |mut b, id| {
+                    b.push_bind(id);
+                });
+                query_builder.build().execute(&mut *tx).await?;
+            }
 
             offset += CHUNK_SIZE;
         }
@@ -223,12 +239,7 @@ CREATE TEMP TABLE unused_keys (
             }
 
             for id in unused_ids {
-                let file_path = self.gen_file_path(id).await?;
-                if let Err(e) = tokio::fs::remove_file(&file_path).await {
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        return Err(e.into());
-                    }
-                }
+                self.storage.delete(id.to_le_bytes())?;
             }
 
             offset += CHUNK_SIZE;
@@ -244,38 +255,6 @@ CREATE TEMP TABLE unused_keys (
 
         Ok(())
     }
-
-    async fn get_id(&self, key: &str) -> Result<Option<i64>> {
-        let result: Option<(i64,)> = sqlx::query_as("SELECT id FROM keys WHERE name = ? LIMIT 1")
-            .bind(key)
-            .fetch_optional(self.db.as_ref())
-            .await?;
-        Ok(result.map(|(id,)| id))
-    }
-
-    async fn put_id(&self, key: &str) -> Result<i64> {
-        let (id,): (i64,) = sqlx::query_as("INSERT INTO keys (name) VALUES (?) RETURNING id")
-            .bind(key)
-            .fetch_one(self.db.as_ref())
-            .await?;
-        Ok(id)
-    }
-
-    async fn gen_file_path(&self, id: i64) -> Result<PathBuf> {
-        let relative_path = Self::gen_relative_file_path(id);
-        let file_path = self.dir_path.join("blocks").join(relative_path);
-        create_dir_all(file_path.parent().unwrap()).await?;
-        Ok(file_path)
-    }
-
-    fn gen_relative_file_path(id: i64) -> String {
-        let mut res = [0; 6];
-        for i in 0..6 {
-            let v = ((id >> (i * 11)) & 0x7FF) as usize;
-            res[5 - i] = v;
-        }
-        res.iter().map(|v| format!("{v:03x}")).collect::<Vec<_>>().join("/")
-    }
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -286,6 +265,8 @@ struct Key {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use tempfile::tempdir;
     use testresult::TestResult;
     use tokio_stream::StreamExt as _;
