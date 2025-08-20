@@ -10,7 +10,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{storage::KeyValueFileStorage, util::Terminable},
+    core::{storage::KeyValueRocksdbStorage, util::Terminable},
     prelude::*,
 };
 
@@ -19,7 +19,7 @@ use super::*;
 #[allow(unused)]
 pub struct FileSubscriber {
     file_subscriber_repo: Arc<FileSubscriberRepo>,
-    blocks_storage: Arc<KeyValueFileStorage>,
+    blocks_storage: Arc<KeyValueRocksdbStorage>,
 
     task_decoder: Arc<TokioMutex<Option<Arc<TaskDecoder>>>>,
 
@@ -51,7 +51,7 @@ impl FileSubscriber {
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
         let file_subscriber_repo = Arc::new(FileSubscriberRepo::new(state_dir_path.join("repo"), clock.clone()).await?);
-        let blocks_storage = Arc::new(KeyValueFileStorage::new(state_dir_path.join("blocks")).await?);
+        let blocks_storage = Arc::new(KeyValueRocksdbStorage::new(state_dir_path.join("blocks"), tsid_provider.clone()).await?);
 
         let v = Arc::new(Self {
             file_subscriber_repo,
@@ -87,7 +87,7 @@ impl FileSubscriber {
         Ok(root_hashes)
     }
 
-    pub async fn write_block(&self, root_hash: &OmniHash, block_hash: &OmniHash, value: &Bytes) -> Result<()> {
+    pub async fn write_block(&self, root_hash: &OmniHash, block_hash: &OmniHash, value: Bytes) -> Result<()> {
         let blocks = self
             .file_subscriber_repo
             .find_blocks_by_root_hash_and_block_hash(root_hash, block_hash)
@@ -97,7 +97,7 @@ impl FileSubscriber {
         }
 
         let key = gen_block_path(root_hash, block_hash);
-        self.blocks_storage.put_value(&key, value).await?;
+        self.blocks_storage.put_value(&key, value, true).await?;
 
         let new_blocks: Vec<SubscribedBlock> = blocks.into_iter().map(|n| SubscribedBlock { downloaded: true, ..n }).collect();
         self.file_subscriber_repo.upsert_blocks(&new_blocks).await?;

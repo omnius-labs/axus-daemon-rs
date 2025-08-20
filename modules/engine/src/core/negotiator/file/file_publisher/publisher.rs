@@ -9,7 +9,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{storage::KeyValueFileStorage, util::Terminable},
+    core::{storage::KeyValueRocksdbStorage, util::Terminable},
     prelude::*,
 };
 
@@ -18,7 +18,7 @@ use super::*;
 #[allow(unused)]
 pub struct FilePublisher {
     file_publisher_repo: Arc<FilePublisherRepo>,
-    blocks_storage: Arc<KeyValueFileStorage>,
+    blocks_storage: Arc<KeyValueRocksdbStorage>,
 
     task_encoder: Arc<TokioMutex<Option<Arc<TaskEncoder>>>>,
 
@@ -49,7 +49,7 @@ impl FilePublisher {
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
         let file_publisher_repo = Arc::new(FilePublisherRepo::new(state_dir_path.join("repo"), clock.clone()).await?);
-        let blocks_storage = Arc::new(KeyValueFileStorage::new(state_dir_path.join("blocks")).await?);
+        let blocks_storage = Arc::new(KeyValueRocksdbStorage::new(state_dir_path.join("blocks"), tsid_provider.clone()).await?);
 
         let v = Arc::new(Self {
             file_publisher_repo,

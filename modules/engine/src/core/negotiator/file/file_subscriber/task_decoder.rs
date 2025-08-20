@@ -18,7 +18,7 @@ use omnius_core_omnikit::model::OmniHash;
 use crate::{
     core::{
         negotiator::file::model::SubscribedFile,
-        storage::KeyValueFileStorage,
+        storage::KeyValueRocksdbStorage,
         util::{EventListener, Terminable},
     },
     prelude::*,
@@ -29,7 +29,7 @@ use super::*;
 #[allow(unused)]
 pub struct TaskDecoder {
     file_subscriber_repo: Arc<FileSubscriberRepo>,
-    blocks_storage: Arc<KeyValueFileStorage>,
+    blocks_storage: Arc<KeyValueRocksdbStorage>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -57,7 +57,7 @@ impl TaskDecoder {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         file_subscriber_repo: Arc<FileSubscriberRepo>,
-        blocks_storage: Arc<KeyValueFileStorage>,
+        blocks_storage: Arc<KeyValueRocksdbStorage>,
 
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,

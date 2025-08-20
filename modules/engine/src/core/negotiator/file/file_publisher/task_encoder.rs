@@ -10,6 +10,7 @@ use tokio::{
     sync::Mutex as TokioMutex,
     task::JoinHandle,
 };
+use tokio_util::bytes::Bytes;
 use tracing::warn;
 
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
@@ -19,7 +20,7 @@ use omnius_core_rocketpack::RocketMessage;
 use crate::{
     core::{
         negotiator::file::model::PublishedUncommittedFile,
-        storage::KeyValueFileStorage,
+        storage::KeyValueRocksdbStorage,
         util::{EventListener, Terminable},
     },
     prelude::*,
@@ -30,7 +31,7 @@ use super::*;
 #[allow(unused)]
 pub struct TaskEncoder {
     file_publisher_repo: Arc<FilePublisherRepo>,
-    blocks_storage: Arc<KeyValueFileStorage>,
+    blocks_storage: Arc<KeyValueRocksdbStorage>,
 
     tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
     clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -60,7 +61,7 @@ impl TaskEncoder {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         file_publisher_repo: Arc<FilePublisherRepo>,
-        blocks_storage: Arc<KeyValueFileStorage>,
+        blocks_storage: Arc<KeyValueRocksdbStorage>,
 
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
@@ -251,7 +252,7 @@ impl TaskEncoder {
 
             for uncommitted_block in self.file_publisher_repo.find_uncommitted_blocks_by_file_id(&uncommitted_file.id).await? {
                 let path = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
-                self.blocks_storage.delete_key(path.as_str()).await?;
+                self.blocks_storage.delete(path.as_str()).await?;
             }
 
             self.file_publisher_repo
@@ -284,7 +285,7 @@ impl TaskEncoder {
         for uncommitted_block in all_uncommitted_blocks {
             let old_key = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
             let new_key = gen_committed_block_path(&root_hash, &uncommitted_block.block_hash);
-            self.blocks_storage.rename_key(old_key.as_str(), new_key.as_str()).await?;
+            self.blocks_storage.rename(old_key.as_str(), new_key.as_str(), false).await?;
         }
 
         self.file_publisher_repo
@@ -309,8 +310,7 @@ impl TaskEncoder {
                 break;
             }
 
-            let block = block.as_slice();
-            let block_hash = OmniHash::compute_hash(OmniHashAlgorithmType::Sha3_256, block);
+            let block_hash = OmniHash::compute_hash(OmniHashAlgorithmType::Sha3_256, &block);
 
             let uncommitted_block = PublishedUncommittedBlock {
                 file_id: file_id.to_string(),
@@ -322,7 +322,7 @@ impl TaskEncoder {
             uncommitted_blocks.push(uncommitted_block);
 
             let path = gen_uncommitted_block_path(file_id, &block_hash);
-            self.blocks_storage.put_value(path.as_str(), block).await?;
+            self.blocks_storage.put_value(path.as_str(), Bytes::from(block), true).await?;
 
             index += 1;
         }

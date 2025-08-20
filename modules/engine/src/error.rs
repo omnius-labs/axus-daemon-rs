@@ -99,6 +99,7 @@ pub enum ErrorKind {
     CryptoError,
     UpnpError,
     NetworkError,
+    TaskError,
     UnexpectedError,
 
     InvalidFormat,
@@ -109,6 +110,7 @@ pub enum ErrorKind {
     NotFound,
     AlreadyConnected,
     RateLimitExceeded,
+    AlreadyExists,
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -123,6 +125,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::CryptoError => write!(fmt, "crypto error"),
             ErrorKind::UpnpError => write!(fmt, "upnp error"),
             ErrorKind::NetworkError => write!(fmt, "network error"),
+            ErrorKind::TaskError => write!(fmt, "task error"),
             ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
 
             ErrorKind::InvalidFormat => write!(fmt, "invalid format"),
@@ -133,6 +136,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::NotFound => write!(fmt, "not found"),
             ErrorKind::AlreadyConnected => write!(fmt, "already connected"),
             ErrorKind::RateLimitExceeded => write!(fmt, "rate limit exceeded"),
+            ErrorKind::AlreadyExists => write!(fmt, "already exists"),
         }
     }
 }
@@ -330,5 +334,11 @@ impl From<fast_socks5::SocksError> for Error {
             .message("Socks operation failed")
             .source(e)
             .build()
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Error::builder().kind(ErrorKind::TaskError).message("join failed").source(e).build()
     }
 }

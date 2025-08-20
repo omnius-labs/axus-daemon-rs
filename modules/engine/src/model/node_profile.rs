@@ -42,7 +42,7 @@ impl RocketMessage for NodeProfile {
         let id = reader.get_bytes(128)?;
 
         let len = reader.get_u32()?;
-        ensure_err!(len > 128, get_too_large_err);
+        ensure_err!(len <= 128, get_too_large_err);
 
         let mut addrs = Vec::with_capacity(len as usize);
         for _ in 0..len {
