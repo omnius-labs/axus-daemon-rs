@@ -10,8 +10,13 @@ pub struct AssetKey {
 
 impl RocketMessage for AssetKey {
     fn pack(writer: &mut RocketMessageWriter, value: &Self, depth: u32) -> RocketPackResult<()> {
+        writer.put_u32(1);
         writer.put_str(value.typ.to_string().as_str());
+
+        writer.put_u32(2);
         OmniHash::pack(writer, &value.hash, depth + 1)?;
+
+        writer.put_u32(0);
 
         Ok(())
     }
@@ -20,9 +25,29 @@ impl RocketMessage for AssetKey {
     where
         Self: Sized,
     {
-        let typ = reader.get_string(1024)?.parse()?;
-        let hash = OmniHash::unpack(reader, depth + 1)?;
+        let mut typ: Option<String> = None;
+        let mut hash: Option<OmniHash> = None;
 
-        Ok(Self { typ, hash })
+        loop {
+            let field_id = reader.get_u32()?;
+            if field_id == 0 {
+                break;
+            }
+
+            match field_id {
+                1 => {
+                    typ = Some(reader.get_string(1024)?);
+                }
+                2 => {
+                    hash = Some(OmniHash::unpack(reader, depth + 1)?);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Self {
+            typ: typ.ok_or_else(|| RocketPackError::builder().kind(RocketPackErrorKind::InvalidFormat).build())?,
+            hash: hash.ok_or_else(|| RocketPackError::builder().kind(RocketPackErrorKind::InvalidFormat).build())?,
+        })
     }
 }

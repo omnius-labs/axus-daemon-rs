@@ -23,6 +23,8 @@ impl KeyValueRocksdbStorage {
 
         let names_opts = rocksdb::Options::default();
 
+        let metas_opts = rocksdb::Options::default();
+
         let mut blocks_opts = rocksdb::Options::default();
         blocks_opts.set_enable_blob_files(true);
         blocks_opts.set_enable_blob_gc(true);
@@ -31,6 +33,7 @@ impl KeyValueRocksdbStorage {
         let cfs = vec![
             rocksdb::ColumnFamilyDescriptor::new(rocksdb::DEFAULT_COLUMN_FAMILY_NAME, rocksdb::Options::default()),
             rocksdb::ColumnFamilyDescriptor::new("names", names_opts),
+            rocksdb::ColumnFamilyDescriptor::new("metas", metas_opts),
             rocksdb::ColumnFamilyDescriptor::new("blocks", blocks_opts),
         ];
 
@@ -42,12 +45,12 @@ impl KeyValueRocksdbStorage {
     }
 
     #[allow(unused)]
-    pub async fn rename<K>(&self, old_name: K, new_name: K, overwrite: bool) -> Result<()>
+    pub async fn rename_key<K>(&self, old_key: K, new_key: K, overwrite: bool) -> Result<()>
     where
         K: AsRef<[u8]>,
     {
-        let old_name = old_name.as_ref().to_vec();
-        let new_name = new_name.as_ref().to_vec();
+        let old_name = old_key.as_ref().to_vec();
+        let new_name = new_key.as_ref().to_vec();
 
         let db = self.db.clone();
 
@@ -56,6 +59,7 @@ impl KeyValueRocksdbStorage {
 
             let cf_names = db.cf_handle("names").expect("missing CF");
             let cf_blocks = db.cf_handle("blocks").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
 
             let (old_id, new_id) = if old_name <= new_name {
                 let old_id = txn.get_for_update_cf(&cf_names, &old_name, true)?;
@@ -71,6 +75,8 @@ impl KeyValueRocksdbStorage {
                 if let Some(new_id) = new_id {
                     if overwrite {
                         txn.delete_cf(&cf_blocks, &new_id)?;
+                        txn.delete_cf(&cf_metas, &new_id)?;
+
                         txn.put_cf(&cf_names, &new_name, &old_id)?;
                         txn.delete_cf(&cf_names, &old_name)?;
                     } else {
@@ -92,11 +98,11 @@ impl KeyValueRocksdbStorage {
     }
 
     #[allow(unused)]
-    pub async fn contains<K>(&self, name: K) -> Result<bool>
+    pub async fn contains_key<K>(&self, key: K) -> Result<bool>
     where
         K: AsRef<[u8]>,
     {
-        let name = name.as_ref().to_vec();
+        let name = key.as_ref().to_vec();
         let db = self.db.clone();
 
         tokio::task::spawn_blocking(move || -> Result<bool> {
@@ -108,57 +114,12 @@ impl KeyValueRocksdbStorage {
     }
 
     #[allow(unused)]
-    pub fn get_names(&self) -> Result<BlobStorageKeyIterator> {
+    pub fn get_keys(&self) -> Result<BlobStorageKeyIterator> {
         let cf_names = self.db.cf_handle("names").expect("missing CF");
         let mut iter = self.db.raw_iterator_cf(&cf_names);
         iter.seek_to_first();
         let iter = BlobStorageKeyIterator::new(iter);
         Ok(iter)
-    }
-
-    #[allow(unused)]
-    pub async fn put_value<K>(&self, name: K, value: Bytes, overwrite: bool) -> Result<()>
-    where
-        K: AsRef<[u8]>,
-    {
-        let name = name.as_ref().to_vec();
-        let value = value.clone();
-        let db = self.db.clone();
-        let tsid_provider = self.tsid_provider.clone();
-
-        tokio::task::spawn_blocking(move || {
-            let cf_names = db.cf_handle("names").expect("missing CF");
-            let cf_blocks = db.cf_handle("blocks").expect("missing CF");
-
-            let txn = db.transaction();
-
-            if !overwrite {
-                let id = match txn.get_cf(&cf_names, &name)? {
-                    Some(id) => id,
-                    None => return Err(Error::builder().kind(ErrorKind::AlreadyExists).build()),
-                };
-
-                txn.put_cf(&cf_blocks, &id, &value)?;
-            } else {
-                let id = match txn.get_cf(&cf_names, &name)? {
-                    Some(id) => id,
-                    None => {
-                        let mut tsid_provider = tsid_provider.lock();
-                        let tsid = tsid_provider.create();
-                        let id = tsid.to_string().into_bytes();
-                        txn.put_cf(&cf_names, &name, &id)?;
-                        id
-                    }
-                };
-
-                txn.put_cf(&cf_blocks, &id, &value)?;
-            }
-
-            txn.commit()?;
-
-            Ok(())
-        })
-        .await?
     }
 
     #[allow(unused)]
@@ -186,6 +147,108 @@ impl KeyValueRocksdbStorage {
     }
 
     #[allow(unused)]
+    pub async fn put_value<K>(&self, key: K, value: Bytes, meta: Option<Bytes>, overwrite: bool) -> Result<()>
+    where
+        K: AsRef<[u8]>,
+    {
+        let name = key.as_ref().to_vec();
+        let block = value.clone();
+        let meta = meta.clone();
+        let db = self.db.clone();
+        let tsid_provider = self.tsid_provider.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let cf_names = db.cf_handle("names").expect("missing CF");
+            let cf_blocks = db.cf_handle("blocks").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
+
+            let txn = db.transaction();
+
+            if !overwrite {
+                let id = match txn.get_cf(&cf_names, &name)? {
+                    Some(id) => id,
+                    None => return Err(Error::builder().kind(ErrorKind::AlreadyExists).build()),
+                };
+
+                txn.put_cf(&cf_blocks, &id, &block)?;
+            } else {
+                let id = match txn.get_cf(&cf_names, &name)? {
+                    Some(id) => id,
+                    None => {
+                        let mut tsid_provider = tsid_provider.lock();
+                        let tsid = tsid_provider.create();
+                        let id = tsid.to_string().into_bytes();
+                        txn.put_cf(&cf_names, &name, &id)?;
+                        id
+                    }
+                };
+
+                txn.put_cf(&cf_blocks, &id, &block)?;
+                if let Some(meta) = meta {
+                    txn.put_cf(&cf_metas, &id, &meta)?;
+                }
+            }
+
+            txn.commit()?;
+
+            Ok(())
+        })
+        .await?
+    }
+
+    #[allow(unused)]
+    pub async fn get_meta<K>(&self, name: K) -> Result<Option<Vec<u8>>>
+    where
+        K: AsRef<[u8]>,
+    {
+        let name = name.as_ref().to_vec();
+        let db = self.db.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<Option<Vec<u8>>> {
+            let cf_names = db.cf_handle("names").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
+
+            let id = match db.get_cf(&cf_names, &name)? {
+                Some(id) => id,
+                None => return Ok(None),
+            };
+
+            let value = db.get_cf(&cf_metas, &id)?;
+
+            Ok(value)
+        })
+        .await?
+    }
+
+    #[allow(unused)]
+    pub async fn put_meta<K>(&self, name: K, meta: Bytes) -> Result<()>
+    where
+        K: AsRef<[u8]>,
+    {
+        let name = name.as_ref().to_vec();
+        let meta = meta.clone();
+        let db = self.db.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let cf_names = db.cf_handle("names").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
+
+            let txn = db.transaction();
+
+            let id = match txn.get_cf(&cf_names, &name)? {
+                Some(id) => id,
+                None => return Err(Error::builder().kind(ErrorKind::NotFound).message("key is not found").build()),
+            };
+
+            txn.put_cf(&cf_metas, &id, &meta)?;
+            txn.commit()?;
+
+            Ok(())
+        })
+        .await?
+    }
+
+    #[allow(unused)]
     pub async fn delete<K>(&self, name: K) -> Result<()>
     where
         K: AsRef<[u8]>,
@@ -196,6 +259,7 @@ impl KeyValueRocksdbStorage {
         tokio::task::spawn_blocking(move || -> Result<()> {
             let cf_names = db.cf_handle("names").expect("missing CF");
             let cf_blocks = db.cf_handle("blocks").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
 
             let txn = db.transaction();
 
@@ -204,8 +268,9 @@ impl KeyValueRocksdbStorage {
                 None => return Ok(()),
             };
 
-            txn.delete_cf(&cf_blocks, &id)?;
             txn.delete_cf(&cf_names, name)?;
+            txn.delete_cf(&cf_metas, &id)?;
+            txn.delete_cf(&cf_blocks, &id)?;
 
             txn.commit()?;
 
@@ -225,6 +290,7 @@ impl KeyValueRocksdbStorage {
         tokio::task::spawn_blocking(move || -> Result<()> {
             let cf_names = db.cf_handle("names").expect("missing CF");
             let cf_blocks = db.cf_handle("blocks").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
 
             let mut batch = rocksdb::WriteBatchWithTransaction::default();
 
@@ -234,8 +300,9 @@ impl KeyValueRocksdbStorage {
                     None => return Ok(()),
                 };
 
-                batch.delete_cf(&cf_blocks, &id);
                 batch.delete_cf(&cf_names, name);
+                batch.delete_cf(&cf_metas, &id);
+                batch.delete_cf(&cf_blocks, &id);
             }
 
             db.write(batch)?;
@@ -257,6 +324,7 @@ impl KeyValueRocksdbStorage {
         tokio::task::spawn_blocking(move || -> Result<()> {
             let cf_names = db.cf_handle("names").expect("missing CF");
             let cf_blocks = db.cf_handle("blocks").expect("missing CF");
+            let cf_metas = db.cf_handle("metas").expect("missing CF");
 
             let mut iter = db.raw_iterator_cf(&cf_names);
             iter.seek_to_first();
@@ -267,6 +335,7 @@ impl KeyValueRocksdbStorage {
                 if let Some(id) = iter.value() {
                     if !(func)(name) {
                         batch.delete_cf(&cf_names, name);
+                        batch.delete_cf(&cf_metas, id);
                         batch.delete_cf(&cf_blocks, id);
                     }
                 }
@@ -317,91 +386,239 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_basic_operations() -> TestResult<()> {
-        // setup
+    // Helper function to create a test storage instance
+    async fn create_test_storage() -> TestResult<(tempfile::TempDir, KeyValueRocksdbStorage)> {
         let temp_dir = tempdir()?;
         let clock = FakeClockUtc::new(DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")?.into());
         let tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>> =
             Arc::new(Mutex::new(TsidProviderImpl::new(clock, FakeRandomBytesProvider::new(), 8)));
         let storage = KeyValueRocksdbStorage::new(temp_dir.path(), tsid_provider.clone()).await?;
+        Ok((temp_dir, storage))
+    }
 
-        // contains -> false
-        let exists = storage.contains("key_not_exist").await?;
+    #[tokio::test]
+    async fn test_contains_key() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // Test key that doesn't exist
+        let exists = storage.contains_key("key_not_exist").await?;
         assert!(!exists);
 
+        // Test key that exists
+        storage.put_value("test_key", Bytes::from_static(b"test_value"), None, true).await?;
+        let exists = storage.contains_key("test_key").await?;
+        assert!(exists);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_put_value() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
         // put_value (create) with overwrite = true
-        storage.put_value("name1", Bytes::from_static(b"value1"), true).await?;
+        storage.put_value("name1", Bytes::from_static(b"value1"), None, true).await?;
         let v = storage.get_value("name1").await?;
         assert_eq!(v, Some(b"value1".to_vec()));
 
+        // put_value with meta
+        let meta1 = Bytes::from_static(b"meta1");
+        storage
+            .put_value("name_with_meta", Bytes::from_static(b"value_with_meta"), Some(meta1.clone()), true)
+            .await?;
+        let v = storage.get_value("name_with_meta").await?;
+        assert_eq!(v, Some(b"value_with_meta".to_vec()));
+        let m = storage.get_meta("name_with_meta").await?;
+        assert_eq!(m, Some(meta1.to_vec()));
+
         // put_value with overwrite = false on missing key should return AlreadyExists
-        let res = storage.put_value("missing", Bytes::from_static(b"x"), false).await;
+        let res = storage.put_value("missing", Bytes::from_static(b"x"), None, false).await;
         assert!(res.is_err());
         assert_eq!(res.err().unwrap().kind(), &ErrorKind::AlreadyExists);
 
         // put_value with overwrite = false on existing key should update the block (same id)
-        storage.put_value("name1", Bytes::from_static(b"value2"), false).await?;
+        storage.put_value("name1", Bytes::from_static(b"value2"), None, false).await?;
         let v = storage.get_value("name1").await?;
         assert_eq!(v, Some(b"value2".to_vec()));
 
-        // create another key
-        storage.put_value("name2", Bytes::from_static(b"vv2"), true).await?;
-        assert_eq!(storage.get_value("name2").await?, Some(b"vv2".to_vec()));
+        Ok(())
+    }
 
-        // get_names iterator should include inserted keys
-        let names: Vec<Box<[u8]>> = storage.get_names()?.collect();
-        // convert to Vec<Vec<u8>> for easier assertions
+    #[tokio::test]
+    async fn test_get_value() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // get_value for non-existent key
+        let v = storage.get_value("non_existent").await?;
+        assert_eq!(v, None);
+
+        // get_value for existing key
+        storage.put_value("test_key", Bytes::from_static(b"test_value"), None, true).await?;
+        let v = storage.get_value("test_key").await?;
+        assert_eq!(v, Some(b"test_value".to_vec()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_meta() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // get_meta for non-existent key
+        let m = storage.get_meta("non_existent").await?;
+        assert_eq!(m, None);
+
+        // get_meta for existing key with meta
+        let meta1 = Bytes::from_static(b"meta1");
+        storage
+            .put_value("name_with_meta", Bytes::from_static(b"value_with_meta"), Some(meta1.clone()), true)
+            .await?;
+        let m = storage.get_meta("name_with_meta").await?;
+        assert_eq!(m, Some(meta1.to_vec()));
+
+        // get_meta for existing key without meta
+        storage.put_value("name_without_meta", Bytes::from_static(b"value"), None, true).await?;
+        let m = storage.get_meta("name_without_meta").await?;
+        assert_eq!(m, None);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_put_meta() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // put_meta for non-existent key should return NotFound
+        let meta = Bytes::from_static(b"meta");
+        let res = storage.put_meta("non_existent", meta.clone()).await;
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().kind(), &ErrorKind::NotFound);
+
+        // put_meta for existing key
+        storage.put_value("test_key", Bytes::from_static(b"value"), None, true).await?;
+        storage.put_meta("test_key", meta.clone()).await?;
+        let m = storage.get_meta("test_key").await?;
+        assert_eq!(m, Some(meta.to_vec()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_keys() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // Initially no keys
+        let names: Vec<Box<[u8]>> = storage.get_keys()?.collect();
+        assert_eq!(names.len(), 0);
+
+        // Add some keys
+        storage.put_value("key1", Bytes::from_static(b"value1"), None, true).await?;
+        storage.put_value("key2", Bytes::from_static(b"value2"), None, true).await?;
+
+        // Check that keys are returned
+        let names: Vec<Box<[u8]>> = storage.get_keys()?.collect();
         let names_vec: Vec<Vec<u8>> = names.into_iter().map(|b| b.into_vec()).collect();
-        assert!(names_vec.iter().any(|n| n == b"name1"));
-        assert!(names_vec.iter().any(|n| n == b"name2"));
+        assert_eq!(names_vec.len(), 2);
+        assert!(names_vec.iter().any(|n| n == b"key1"));
+        assert!(names_vec.iter().any(|n| n == b"key2"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_rename_key() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // rename: source key doesn't exist
+        let res = storage.rename_key("non_existent", "new_name", false).await;
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().kind(), &ErrorKind::NotFound);
 
         // rename: name1 -> name3 (non-existing)
-        storage.rename("name1", "name3", false).await?;
+        storage.put_value("name1", Bytes::from_static(b"value1"), None, true).await?;
+        storage.rename_key("name1", "name3", false).await?;
         assert_eq!(storage.get_value("name1").await?, None);
-        assert_eq!(storage.get_value("name3").await?, Some(b"value2".to_vec()));
+        assert_eq!(storage.get_value("name3").await?, Some(b"value1".to_vec()));
 
         // rename: when dest exists and overwrite = false -> AlreadyExists
-        // prepare: name4 exists
-        storage.put_value("name4", Bytes::from_static(b"v4"), true).await?;
-        let res = storage.rename("name3", "name4", false).await;
+        storage.put_value("name4", Bytes::from_static(b"v4"), None, true).await?;
+        storage.put_value("name5", Bytes::from_static(b"v5"), None, true).await?;
+        let res = storage.rename_key("name5", "name4", false).await;
         assert!(res.is_err());
         assert_eq!(res.err().unwrap().kind(), &ErrorKind::AlreadyExists);
 
         // rename: when dest exists and overwrite = true -> dest replaced
-        storage.rename("name3", "name4", true).await?;
-        // after overwrite, name3 should be gone, name4 should contain old name3's data
-        assert_eq!(storage.get_value("name3").await?, None);
-        assert_eq!(storage.get_value("name4").await?, Some(b"value2".to_vec()));
+        storage.rename_key("name5", "name4", true).await?;
+        assert_eq!(storage.get_value("name5").await?, None);
+        assert_eq!(storage.get_value("name4").await?, Some(b"v5".to_vec()));
 
-        // delete single
-        storage.put_value("to_delete", Bytes::from_static(b"del"), true).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_delete() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // delete non-existent key (should not error)
+        storage.delete("non_existent").await?;
+
+        // delete existing key
+        storage.put_value("to_delete", Bytes::from_static(b"del"), None, true).await?;
         assert_eq!(storage.get_value("to_delete").await?, Some(b"del".to_vec()));
         storage.delete("to_delete").await?;
         assert_eq!(storage.get_value("to_delete").await?, None);
 
-        // delete_bulk
-        storage.put_value("bulk1", Bytes::from_static(b"b1"), true).await?;
-        storage.put_value("bulk2", Bytes::from_static(b"b2"), true).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_delete_bulk() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // delete_bulk with non-existent keys (should not error)
+        storage.delete_bulk(&["non_existent1", "non_existent2"]).await?;
+
+        // delete_bulk with existing keys
+        storage.put_value("bulk1", Bytes::from_static(b"b1"), None, true).await?;
+        storage.put_value("bulk2", Bytes::from_static(b"b2"), None, true).await?;
+        storage.put_value("bulk3", Bytes::from_static(b"b3"), None, true).await?;
         assert_eq!(storage.get_value("bulk1").await?, Some(b"b1".to_vec()));
         assert_eq!(storage.get_value("bulk2").await?, Some(b"b2".to_vec()));
+        assert_eq!(storage.get_value("bulk3").await?, Some(b"b3".to_vec()));
+
         storage.delete_bulk(&["bulk1", "bulk2"]).await?;
         assert_eq!(storage.get_value("bulk1").await?, None);
         assert_eq!(storage.get_value("bulk2").await?, None);
+        assert_eq!(storage.get_value("bulk3").await?, Some(b"b3".to_vec()));
 
-        // shrink: keep only keys that match predicate
-        // prepare keys
-        storage.put_value("keep1", Bytes::from_static(b"k1"), true).await?;
-        storage.put_value("keep2", Bytes::from_static(b"k2"), true).await?;
-        storage.put_value("drop1", Bytes::from_static(b"d1"), true).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_shrink() -> TestResult<()> {
+        let (_temp_dir, storage) = create_test_storage().await?;
+
+        // Add keys
+        storage.put_value("keep1", Bytes::from_static(b"k1"), None, true).await?;
+        storage.put_value("keep2", Bytes::from_static(b"k2"), None, true).await?;
+        storage.put_value("drop1", Bytes::from_static(b"d1"), None, true).await?;
+        storage.put_value("drop2", Bytes::from_static(b"d2"), None, true).await?;
+
+        // Check initial state
+        let names_before: Vec<Box<[u8]>> = storage.get_keys()?.collect();
+        assert_eq!(names_before.len(), 4);
+
         // shrink keep only keys starting with "keep"
         storage.shrink(|k| k.starts_with(b"keep")).await?;
-        // confirm
-        let names_after: Vec<Box<[u8]>> = storage.get_names()?.collect();
+
+        // Check final state
+        let names_after: Vec<Box<[u8]>> = storage.get_keys()?.collect();
         let names_after_vec: Vec<Vec<u8>> = names_after.into_iter().map(|b| b.into_vec()).collect();
+        assert_eq!(names_after_vec.len(), 2);
         assert!(names_after_vec.iter().any(|n| n == b"keep1"));
         assert!(names_after_vec.iter().any(|n| n == b"keep2"));
         assert!(!names_after_vec.iter().any(|n| n == b"drop1"));
+        assert!(!names_after_vec.iter().any(|n| n == b"drop2"));
 
         Ok(())
     }

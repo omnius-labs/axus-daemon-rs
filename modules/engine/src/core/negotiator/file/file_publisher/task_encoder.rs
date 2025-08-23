@@ -285,7 +285,7 @@ impl TaskEncoder {
         for uncommitted_block in all_uncommitted_blocks {
             let old_key = gen_uncommitted_block_path(&uncommitted_file.id, &uncommitted_block.block_hash);
             let new_key = gen_committed_block_path(&root_hash, &uncommitted_block.block_hash);
-            self.blocks_storage.rename(old_key.as_str(), new_key.as_str(), false).await?;
+            self.blocks_storage.rename_key(old_key.as_str(), new_key.as_str(), false).await?;
         }
 
         self.file_publisher_repo
@@ -322,7 +322,7 @@ impl TaskEncoder {
             uncommitted_blocks.push(uncommitted_block);
 
             let path = gen_uncommitted_block_path(file_id, &block_hash);
-            self.blocks_storage.put_value(path.as_str(), Bytes::from(block), true).await?;
+            self.blocks_storage.put_value(path.as_str(), Bytes::from(block), None, true).await?;
 
             index += 1;
         }
