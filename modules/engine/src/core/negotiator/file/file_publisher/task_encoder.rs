@@ -322,7 +322,7 @@ impl TaskEncoder {
             uncommitted_blocks.push(uncommitted_block);
 
             let path = gen_uncommitted_block_path(file_id, &block_hash);
-            self.blocks_storage.put_value(path.as_str(), Bytes::from(block), None, true).await?;
+            self.blocks_storage.put_value(path.as_str(), Bytes::from(block), true).await?;
 
             index += 1;
         }

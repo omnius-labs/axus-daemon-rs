@@ -97,7 +97,7 @@ impl FileSubscriber {
         }
 
         let key = gen_block_path(root_hash, block_hash);
-        self.blocks_storage.put_value(&key, value, None, true).await?;
+        self.blocks_storage.put_value(&key, value, true).await?;
 
         let new_blocks: Vec<SubscribedBlock> = blocks.into_iter().map(|n| SubscribedBlock { downloaded: true, ..n }).collect();
         self.file_subscriber_repo.upsert_blocks(&new_blocks).await?;
