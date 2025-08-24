@@ -48,7 +48,7 @@ pub struct NodeFinder {
 #[derive(Debug, Clone)]
 pub struct NodeFinderOption {
     #[allow(unused)]
-    pub state_dir_path: String,
+    pub state_dir: String,
     pub max_connected_session_count: usize,
     pub max_accepted_session_count: usize,
 }
@@ -282,7 +282,7 @@ mod tests {
         Ok(())
     }
 
-    async fn create_node_finder(dir_path: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> Result<NodeFinder> {
+    async fn create_node_finder(state_dir: &Path, name: &str, port: u16, other_node_profile: NodeProfile) -> Result<NodeFinder> {
         let tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync> =
             Arc::new(ConnectionTcpAccepterImpl::new(&OmniAddr::create_tcp("127.0.0.1".parse()?, port), false).await?);
         let tcp_connector: Arc<dyn ConnectionTcpConnector + Send + Sync> = Arc::new(
@@ -302,7 +302,7 @@ mod tests {
             Arc::new(SessionAccepter::new(tcp_accepter.clone(), signer.clone(), random_bytes_provider.clone(), sleeper.clone()).await);
         let session_connector = Arc::new(SessionConnector::new(tcp_connector.clone(), signer, random_bytes_provider));
 
-        let node_ref_repo_dir = dir_path.join(name).join("repo");
+        let node_ref_repo_dir = state_dir.join(name).join("repo");
         fs::create_dir_all(&node_ref_repo_dir)?;
 
         let node_profile_repo = Arc::new(NodeFinderRepo::new(node_ref_repo_dir.as_os_str().to_str().unwrap(), clock.clone()).await?);
@@ -311,7 +311,7 @@ mod tests {
             node_profiles: vec![other_node_profile],
         });
 
-        let node_finder_dir = dir_path.join(name).join("finder");
+        let node_finder_dir = state_dir.join(name).join("finder");
         fs::create_dir_all(&node_finder_dir)?;
 
         let result = NodeFinder::new(
@@ -322,7 +322,7 @@ mod tests {
             clock,
             sleeper,
             NodeFinderOption {
-                state_dir_path: node_finder_dir.as_os_str().to_str().unwrap().to_string(),
+                state_dir: node_finder_dir.as_os_str().to_str().unwrap().to_string(),
                 max_connected_session_count: 3,
                 max_accepted_session_count: 3,
             },

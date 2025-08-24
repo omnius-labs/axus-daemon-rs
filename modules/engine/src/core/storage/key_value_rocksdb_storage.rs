@@ -13,8 +13,8 @@ pub struct KeyValueRocksdbStorage {
 
 impl KeyValueRocksdbStorage {
     #[allow(unused)]
-    pub async fn new<P: AsRef<Path>>(dir_path: P, tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>) -> Result<Self> {
-        tokio::fs::create_dir_all(&dir_path).await?;
+    pub async fn new<P: AsRef<Path>>(state_dir: P, tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>) -> Result<Self> {
+        tokio::fs::create_dir_all(&state_dir).await?;
 
         let mut db_opts = rocksdb::Options::default();
         db_opts.create_if_missing(true);
@@ -39,7 +39,7 @@ impl KeyValueRocksdbStorage {
 
         let txn_db_opts = rocksdb::TransactionDBOptions::default();
 
-        let db = Arc::new(rocksdb::TransactionDB::open_cf_descriptors(&db_opts, &txn_db_opts, dir_path, cfs)?);
+        let db = Arc::new(rocksdb::TransactionDB::open_cf_descriptors(&db_opts, &txn_db_opts, state_dir, cfs)?);
 
         Ok(Self { db, tsid_provider })
     }

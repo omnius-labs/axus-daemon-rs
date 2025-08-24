@@ -15,8 +15,8 @@ pub struct NodeFinderRepo {
 }
 
 impl NodeFinderRepo {
-    pub async fn new(dir_path: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
-        let path = Path::new(dir_path).join("sqlite.db");
+    pub async fn new(state_dir: &str, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
+        let path = Path::new(state_dir).join("sqlite.db");
         let path = path
             .to_str()
             .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;

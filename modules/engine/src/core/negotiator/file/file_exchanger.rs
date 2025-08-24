@@ -44,7 +44,7 @@ pub struct FileExchanger {
 #[derive(Debug, Clone)]
 pub struct FileExchangerOption {
     #[allow(unused)]
-    pub state_dir_path: PathBuf,
+    pub state_dir: PathBuf,
     pub max_connected_session_for_publish: usize,
     pub max_connected_session_for_subscribe: usize,
 }
@@ -91,14 +91,14 @@ impl FileExchanger {
 
     async fn start(&self) -> Result<()> {
         {
-            let state_dir_path = self.option.state_dir_path.join("file_publisher");
-            let file_publisher = FilePublisher::new(&state_dir_path, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
+            let state_dir = self.option.state_dir.join("file_publisher");
+            let file_publisher = FilePublisher::new(&state_dir, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
             self.file_publisher.lock().await.replace(file_publisher);
         }
 
         {
-            let state_dir_path = self.option.state_dir_path.join("file_subscriber");
-            let file_subscriber = FileSubscriber::new(&state_dir_path, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
+            let state_dir = self.option.state_dir.join("file_subscriber");
+            let file_subscriber = FileSubscriber::new(&state_dir, self.tsid_provider.clone(), self.clock.clone(), self.sleeper.clone()).await?;
             self.file_subscriber.lock().await.replace(file_subscriber);
         }
 

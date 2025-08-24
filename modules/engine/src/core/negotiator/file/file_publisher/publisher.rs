@@ -43,13 +43,13 @@ impl Terminable for FilePublisher {
 impl FilePublisher {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        state_dir_path: &Path,
+        state_dir: &Path,
         tsid_provider: Arc<Mutex<dyn TsidProvider + Send + Sync>>,
         clock: Arc<dyn Clock<Utc> + Send + Sync>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
     ) -> Result<Arc<Self>> {
-        let file_publisher_repo = Arc::new(FilePublisherRepo::new(state_dir_path.join("repo"), clock.clone()).await?);
-        let blocks_storage = Arc::new(KeyValueRocksdbStorage::new(state_dir_path.join("blocks"), tsid_provider.clone()).await?);
+        let file_publisher_repo = Arc::new(FilePublisherRepo::new(state_dir.join("repo"), clock.clone()).await?);
+        let blocks_storage = Arc::new(KeyValueRocksdbStorage::new(state_dir.join("blocks"), tsid_provider.clone()).await?);
 
         let v = Arc::new(Self {
             file_publisher_repo,

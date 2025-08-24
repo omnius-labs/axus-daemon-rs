@@ -19,8 +19,8 @@ pub struct FilePublisherRepo {
 
 #[allow(unused)]
 impl FilePublisherRepo {
-    pub async fn new<P: AsRef<Path>>(dir_path: P, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
-        let path = dir_path.as_ref().join("sqlite.db");
+    pub async fn new<P: AsRef<Path>>(state_dir: P, clock: Arc<dyn Clock<Utc> + Send + Sync>) -> Result<Self> {
+        let path = state_dir.as_ref().join("sqlite.db");
         let path = path
             .to_str()
             .ok_or_else(|| Error::builder().kind(ErrorKind::UnexpectedError).message("Invalid path").build())?;
