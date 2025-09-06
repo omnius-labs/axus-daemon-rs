@@ -11,10 +11,10 @@ use omnius_core_base::{
 use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
 use crate::{
+    base::connection::{
+        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+    },
     core::{
-        connection::{
-            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
-        },
         negotiator::{NodeFinder, NodeFinderOption, NodeFinderRepo, NodeProfileFetcherImpl},
         session::{SessionAccepter, SessionConnector},
     },

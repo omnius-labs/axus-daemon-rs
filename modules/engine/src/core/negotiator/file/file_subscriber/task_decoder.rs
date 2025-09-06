@@ -16,11 +16,8 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{
-        negotiator::file::model::SubscribedFile,
-        storage::KeyValueRocksdbStorage,
-        util::{EventListener, Terminable},
-    },
+    base::{Shutdown, storage::KeyValueRocksdbStorage, sync::EventListener},
+    core::negotiator::file::model::SubscribedFile,
     prelude::*,
 };
 
@@ -43,8 +40,8 @@ pub struct TaskDecoder {
 }
 
 #[async_trait]
-impl Terminable for TaskDecoder {
-    async fn terminate(&self) {
+impl Shutdown for TaskDecoder {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

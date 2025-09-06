@@ -1,6 +1,8 @@
+use std::str::FromStr;
+
 use async_trait::async_trait;
 
-use crate::{Result, core::util::UriConverter, model::NodeProfile};
+use crate::{Result, model::NodeProfile};
 
 #[async_trait]
 pub trait NodeProfileFetcher {
@@ -30,7 +32,7 @@ impl NodeProfileFetcher for NodeProfileFetcherImpl {
             let res = res.text().await?;
 
             for line in res.split_whitespace() {
-                if let Ok(node_profile) = UriConverter::decode_node_profile(line) {
+                if let Ok(node_profile) = NodeProfile::from_str(line) {
                     vs.push(node_profile);
                 }
             }

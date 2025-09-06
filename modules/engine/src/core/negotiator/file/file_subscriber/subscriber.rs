@@ -10,7 +10,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{storage::KeyValueRocksdbStorage, util::Terminable},
+    base::{Shutdown, storage::KeyValueRocksdbStorage},
     prelude::*,
 };
 
@@ -29,12 +29,12 @@ pub struct FileSubscriber {
 }
 
 #[async_trait]
-impl Terminable for FileSubscriber {
-    async fn terminate(&self) {
+impl Shutdown for FileSubscriber {
+    async fn shutdown(&self) {
         {
             let mut task_decoder = self.task_decoder.lock().await;
             if let Some(task_decoder) = task_decoder.take() {
-                task_decoder.terminate().await;
+                task_decoder.shutdown().await;
             }
         }
     }

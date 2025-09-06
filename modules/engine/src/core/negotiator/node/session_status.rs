@@ -6,10 +6,8 @@ use parking_lot::Mutex;
 use omnius_core_base::clock::Clock;
 
 use crate::{
-    core::{
-        session::model::Session,
-        util::{VolatileHashMap, VolatileHashSet},
-    },
+    base::collections::{VolatileHashMap, VolatileHashSet},
+    core::session::model::Session,
     model::{AssetKey, NodeProfile},
 };
 

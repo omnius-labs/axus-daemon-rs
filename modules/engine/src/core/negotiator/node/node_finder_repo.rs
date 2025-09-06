@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, str::FromStr, sync::Arc};
 
 use chrono::Utc;
 use sqlx::QueryBuilder;
@@ -7,7 +7,7 @@ use sqlx::sqlite::SqlitePool;
 use omnius_core_base::clock::Clock;
 use omnius_core_migration::sqlite::{MigrationRequest, SqliteMigrator};
 
-use crate::{core::util::UriConverter, model::NodeProfile, prelude::*};
+use crate::{model::NodeProfile, prelude::*};
 
 pub struct NodeFinderRepo {
     db: Arc<SqlitePool>,
@@ -63,10 +63,7 @@ SELECT value
         .fetch_all(self.db.as_ref())
         .await?;
 
-        let res: Vec<NodeProfile> = res
-            .into_iter()
-            .filter_map(|(v,)| UriConverter::decode_node_profile(v.as_str()).ok())
-            .collect();
+        let res: Vec<NodeProfile> = res.into_iter().filter_map(|(v,)| NodeProfile::from_str(v.as_str()).ok()).collect();
         Ok(res)
     }
 
@@ -81,7 +78,7 @@ INSERT OR IGNORE INTO node_profiles (value, weight, created_time, updated_time)
             );
 
             let now = self.clock.now().naive_utc();
-            let rows: Vec<String> = chunk.iter().filter_map(|v| UriConverter::encode_node_profile(v).ok()).collect();
+            let rows: Vec<String> = chunk.iter().map(|v| v.to_string()).collect();
 
             query_builder.push_values(rows, |mut b, row| {
                 b.push_bind(row);

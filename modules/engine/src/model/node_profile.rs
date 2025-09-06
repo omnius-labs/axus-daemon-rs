@@ -1,7 +1,7 @@
 use omnius_core_base::ensure_err;
 use omnius_core_omnikit::model::OmniAddr;
 
-use crate::prelude::*;
+use crate::{model::converter::UriConverter, prelude::*};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeProfile {
@@ -11,8 +11,16 @@ pub struct NodeProfile {
 
 impl std::fmt::Display for NodeProfile {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let addrs: Vec<String> = self.addrs.iter().map(|n| n.to_string()).collect();
-        write!(f, "id: {}, addrs: [{}]", hex::encode(&self.id), addrs.join(", "))
+        let s = UriConverter::encode("node", self).map_err(|_| std::fmt::Error)?;
+        write!(f, "{s}")
+    }
+}
+
+impl std::str::FromStr for NodeProfile {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        UriConverter::decode("node", s)
     }
 }
 
@@ -76,3 +84,5 @@ impl RocketMessage for NodeProfile {
         })
     }
 }
+
+impl NodeProfile {}

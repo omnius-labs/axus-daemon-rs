@@ -17,10 +17,14 @@ mod tests {
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
     use omnius_core_rocketpack::{Result as RocketPackResult, RocketMessage, RocketMessageReader, RocketMessageWriter};
 
-    use crate::core::{
-        connection::{ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType},
-        session::{SessionAccepter, SessionConnector, model::SessionType},
-        util::Terminable,
+    use crate::{
+        base::{
+            Shutdown,
+            connection::{
+                ConnectionTcpAccepterImpl, ConnectionTcpConnectorImpl, FramedRecvExt as _, FramedSendExt as _, TcpProxyOption, TcpProxyType,
+            },
+        },
+        core::session::{SessionAccepter, SessionConnector, model::SessionType},
     };
 
     #[tokio::test]
@@ -62,8 +66,8 @@ mod tests {
 
         println!("{}", text.value);
 
-        session_accepter.terminate().await;
-        tcp_accepter.terminate().await;
+        session_accepter.shutdown().await;
+        tcp_accepter.shutdown().await;
 
         Ok(())
     }

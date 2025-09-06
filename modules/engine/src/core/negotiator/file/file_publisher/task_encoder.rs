@@ -18,11 +18,8 @@ use omnius_core_omnikit::model::{OmniHash, OmniHashAlgorithmType};
 use omnius_core_rocketpack::RocketMessage;
 
 use crate::{
-    core::{
-        negotiator::file::model::PublishedUncommittedFile,
-        storage::KeyValueRocksdbStorage,
-        util::{EventListener, Terminable},
-    },
+    base::{Shutdown, storage::KeyValueRocksdbStorage, sync::EventListener},
+    core::negotiator::file::model::PublishedUncommittedFile,
     prelude::*,
 };
 
@@ -45,8 +42,8 @@ pub struct TaskEncoder {
 }
 
 #[async_trait]
-impl Terminable for TaskEncoder {
-    async fn terminate(&self) {
+impl Shutdown for TaskEncoder {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

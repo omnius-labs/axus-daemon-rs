@@ -3,24 +3,14 @@ use crc::{CRC_32_ISCSI, Crc};
 use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
-
-use crate::{model::NodeProfile, prelude::*};
+use crate::prelude::*;
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 pub struct UriConverter;
 
 impl UriConverter {
-    #[allow(unused)]
-    pub fn encode_node_profile(v: &NodeProfile) -> Result<String> {
-        Self::encode("node", v)
-    }
-
-    pub fn decode_node_profile(text: &str) -> Result<NodeProfile> {
-        Self::decode("node", text)
-    }
-
-    fn encode<T: RocketMessage>(typ: &str, v: &T) -> Result<String> {
+    pub fn encode<T: RocketMessage>(typ: &str, v: &T) -> Result<String> {
         let body = v.export()?;
         let crc = CASTAGNOLI.checksum(&body).to_le_bytes();
 
@@ -37,21 +27,21 @@ impl UriConverter {
         Ok(s)
     }
 
-    fn decode<T: RocketMessage>(typ: &str, text: &str) -> Result<T> {
+    pub fn decode<T: RocketMessage>(typ: &str, text: &str) -> Result<T> {
         let text = Self::try_parse_schema(typ, text)?;
         let (text, version) = Self::try_parse_version(text)?;
 
         match version {
             1 => Self::decode_v1(text),
-            _ => Err(Error::builder().kind(ErrorKind::UnsupportedVersion).build()),
+            _ => Err(Error::builder().kind(ErrorKind::UnsupportedVersion).message("unsupported version").build()),
         }
     }
 
     fn decode_v1<T: RocketMessage>(text: &str) -> Result<T> {
         let (crc, body) = Self::try_parse_body(text)?;
 
-        let crc =
-            <[u8; 4]>::try_from(BASE64.decode(crc)?).map_err(|_| Error::builder().kind(ErrorKind::InvalidFormat).message("invalid crc").build())?;
+        let crc_bytes = BASE64.decode(crc)?;
+        let crc: [u8; 4] = crc_bytes.as_slice().try_into()?;
         let mut body = Bytes::from(BASE64.decode(body.as_bytes())?);
 
         if crc != CASTAGNOLI.checksum(body.as_ref()).to_le_bytes() {
@@ -92,7 +82,7 @@ mod tests {
 
     use omnius_core_omnikit::model::OmniAddr;
 
-    use crate::{core::util::UriConverter, model::NodeProfile};
+    use crate::model::{NodeProfile, converter::UriConverter};
 
     #[test]
     pub fn node_profile_test() -> TestResult {
@@ -100,9 +90,9 @@ mod tests {
             id: vec![1, 2, 3],
             addrs: ["a", "b", "c"].into_iter().map(OmniAddr::new).collect(),
         };
-        let s = UriConverter::encode_node_profile(&v)?;
+        let s = UriConverter::encode("node", &v).unwrap();
         println!("{s}");
-        let v2 = UriConverter::decode_node_profile(s.as_str())?;
+        let v2: NodeProfile = UriConverter::decode("node", s.as_str()).unwrap();
         assert_eq!(v, v2);
 
         Ok(())

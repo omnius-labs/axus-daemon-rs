@@ -14,11 +14,11 @@ use tokio_util::sync::CancellationToken;
 use omnius_core_base::{ensure_err, sleeper::Sleeper};
 
 use crate::{
-    core::{
+    base::{
+        Shutdown,
         connection::{FramedRecvExt as _, FramedSendExt as _},
-        session::model::Session,
-        util::Terminable,
     },
+    core::session::model::Session,
     model::{AssetKey, NodeProfile},
     prelude::*,
 };
@@ -40,8 +40,8 @@ pub struct TaskCommunicator {
 }
 
 #[async_trait]
-impl Terminable for TaskCommunicator {
-    async fn terminate(&self) {
+impl Shutdown for TaskCommunicator {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

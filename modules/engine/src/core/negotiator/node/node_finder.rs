@@ -11,10 +11,8 @@ use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
-    core::{
-        session::{SessionAccepter, SessionConnector},
-        util::{FnHub, Terminable, VolatileHashSet},
-    },
+    base::{Shutdown, collections::VolatileHashSet, sync::FnHub},
+    core::session::{SessionAccepter, SessionConnector},
     model::{AssetKey, NodeProfile},
     prelude::*,
 };
@@ -180,35 +178,35 @@ impl NodeFinder {
 }
 
 #[async_trait]
-impl Terminable for NodeFinder {
-    async fn terminate(&self) {
+impl Shutdown for NodeFinder {
+    async fn shutdown(&self) {
         {
             let mut task_connectors = self.task_connectors.lock().await;
             let task_connectors: Vec<Arc<TaskConnector>> = task_connectors.drain(..).collect();
-            join_all(task_connectors.iter().map(|task| task.terminate())).await;
+            join_all(task_connectors.iter().map(|task| task.shutdown())).await;
         }
 
         {
             let mut task_acceptors = self.task_acceptors.lock().await;
             let task_acceptors: Vec<Arc<TaskAccepter>> = task_acceptors.drain(..).collect();
-            join_all(task_acceptors.iter().map(|task| task.terminate())).await;
+            join_all(task_acceptors.iter().map(|task| task.shutdown())).await;
         }
 
         {
             let mut task_computer = self.task_computer.lock().await;
             if let Some(task_computer) = task_computer.take() {
-                task_computer.terminate().await;
+                task_computer.shutdown().await;
             }
         }
 
         {
             let mut task_communicator = self.task_communicator.lock().await;
             if let Some(task_communicator) = task_communicator.take() {
-                task_communicator.terminate().await;
+                task_communicator.shutdown().await;
             }
         }
 
-        self.session_accepter.terminate().await;
+        self.session_accepter.shutdown().await;
     }
 }
 
@@ -228,11 +226,11 @@ mod tests {
 
     use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
-    use crate::core::{
-        connection::{
+    use crate::{
+        base::connection::{
             ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
         },
-        negotiator::NodeProfileFetcherMock,
+        core::negotiator::NodeProfileFetcherMock,
     };
 
     use super::*;
@@ -276,8 +274,8 @@ mod tests {
         }
         info!("done");
 
-        nf1.terminate().await;
-        nf2.terminate().await;
+        nf1.shutdown().await;
+        nf2.shutdown().await;
 
         Ok(())
     }

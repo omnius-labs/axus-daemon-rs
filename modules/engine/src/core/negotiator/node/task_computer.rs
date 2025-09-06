@@ -16,7 +16,8 @@ use tracing::warn;
 use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
-    core::util::{FnCaller, Kadex, Terminable},
+    base::{Shutdown, sync::FnCaller},
+    core::dht::Kadex,
     model::{AssetKey, NodeProfile},
     prelude::*,
 };
@@ -38,8 +39,8 @@ pub struct TaskComputer {
 }
 
 #[async_trait]
-impl Terminable for TaskComputer {
-    async fn terminate(&self) {
+impl Shutdown for TaskComputer {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

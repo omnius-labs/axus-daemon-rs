@@ -22,13 +22,13 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
+    base::{Shutdown, collections::VolatileHashSet},
     core::{
         negotiator::NodeFinder,
         session::{
             SessionConnector,
             model::{SessionHandshakeType, SessionType},
         },
-        util::{Terminable, VolatileHashSet},
     },
     model::{AssetKey, NodeProfile},
     prelude::*,
@@ -52,8 +52,8 @@ pub struct TaskConnector {
 }
 
 #[async_trait]
-impl Terminable for TaskConnector {
-    async fn terminate(&self) {
+impl Shutdown for TaskConnector {
+    async fn shutdown(&self) {
         for join_handle in self.join_handles.lock().await.drain(..) {
             join_handle.abort();
             let _ = join_handle.fuse().await;

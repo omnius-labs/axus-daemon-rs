@@ -18,12 +18,10 @@ use tracing::warn;
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
-    core::{
-        session::{
-            SessionConnector,
-            model::{SessionHandshakeType, SessionType},
-        },
-        util::{Terminable, VolatileHashSet},
+    base::{Shutdown, collections::VolatileHashSet},
+    core::session::{
+        SessionConnector,
+        model::{SessionHandshakeType, SessionType},
     },
     model::NodeProfile,
     prelude::*,
@@ -45,8 +43,8 @@ pub struct TaskConnector {
 }
 
 #[async_trait]
-impl Terminable for TaskConnector {
-    async fn terminate(&self) {
+impl Shutdown for TaskConnector {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

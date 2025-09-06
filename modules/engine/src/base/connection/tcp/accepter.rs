@@ -10,14 +10,14 @@ use omnius_core_base::net::Reachable;
 use omnius_core_omnikit::model::OmniAddr;
 
 use crate::{
-    core::{connection::FramedStream, util::Terminable},
+    base::{Shutdown, connection::FramedStream},
     prelude::*,
 };
 
 use super::UpnpClient;
 
 #[async_trait]
-pub trait ConnectionTcpAccepter: Terminable {
+pub trait ConnectionTcpAccepter: Shutdown {
     async fn accept(&self) -> Result<(FramedStream, SocketAddr)>;
     #[allow(unused)]
     async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>>;
@@ -61,10 +61,10 @@ impl ConnectionTcpAccepterImpl {
 }
 
 #[async_trait]
-impl Terminable for ConnectionTcpAccepterImpl {
-    async fn terminate(&self) {
+impl Shutdown for ConnectionTcpAccepterImpl {
+    async fn shutdown(&self) {
         if let Some(upnp_port_mapping) = &self.upnp_port_mapping {
-            upnp_port_mapping.terminate().await;
+            upnp_port_mapping.shutdown().await;
         }
     }
 }
@@ -119,8 +119,8 @@ impl UpnpPortMapping {
 }
 
 #[async_trait]
-impl Terminable for UpnpPortMapping {
-    async fn terminate(&self) {
+impl Shutdown for UpnpPortMapping {
+    async fn shutdown(&self) {
         let _ = UpnpClient::delete_port_mapping("TCP", self.port).await;
     }
 }

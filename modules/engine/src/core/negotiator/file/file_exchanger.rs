@@ -7,10 +7,10 @@ use tokio::sync::{Mutex as TokioMutex, RwLock as TokioRwLock, mpsc};
 use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 
 use crate::{
+    base::collections::VolatileHashSet,
     core::{
         negotiator::NodeFinder,
         session::{SessionAccepter, SessionConnector},
-        util::VolatileHashSet,
     },
     model::{AssetKey, NodeProfile},
     prelude::*,

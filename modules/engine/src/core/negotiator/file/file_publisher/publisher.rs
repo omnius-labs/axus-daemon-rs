@@ -9,7 +9,7 @@ use omnius_core_base::{clock::Clock, sleeper::Sleeper, tsid::TsidProvider};
 use omnius_core_omnikit::model::OmniHash;
 
 use crate::{
-    core::{storage::KeyValueRocksdbStorage, util::Terminable},
+    base::{Shutdown, storage::KeyValueRocksdbStorage},
     prelude::*,
 };
 
@@ -28,12 +28,12 @@ pub struct FilePublisher {
 }
 
 #[async_trait]
-impl Terminable for FilePublisher {
-    async fn terminate(&self) {
+impl Shutdown for FilePublisher {
+    async fn shutdown(&self) {
         {
             let mut task_encoder = self.task_encoder.lock().await;
             if let Some(task_encoder) = task_encoder.take() {
-                task_encoder.terminate().await;
+                task_encoder.shutdown().await;
             }
         }
     }

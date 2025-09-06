@@ -11,12 +11,10 @@ use tokio::{
 use omnius_core_base::{clock::Clock, sleeper::Sleeper};
 
 use crate::{
-    core::{
-        session::{
-            SessionAccepter,
-            model::{SessionHandshakeType, SessionType},
-        },
-        util::Terminable,
+    base::Shutdown,
+    core::session::{
+        SessionAccepter,
+        model::{SessionHandshakeType, SessionType},
     },
     prelude::*,
 };
@@ -35,8 +33,8 @@ pub struct TaskAccepter {
 }
 
 #[async_trait]
-impl Terminable for TaskAccepter {
-    async fn terminate(&self) {
+impl Shutdown for TaskAccepter {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;

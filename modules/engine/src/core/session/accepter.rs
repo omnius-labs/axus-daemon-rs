@@ -13,11 +13,11 @@ use omnius_core_base::{random_bytes::RandomBytesProvider, sleeper::Sleeper};
 use omnius_core_omnikit::model::{OmniAddr, OmniSigner};
 
 use crate::{
-    core::{
+    base::{
+        Shutdown,
         connection::{ConnectionTcpAccepter, FramedRecvExt as _, FramedSendExt as _},
-        session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
-        util::Terminable,
     },
+    core::session::message::{HelloMessage, SessionVersion, V1ChallengeMessage, V1RequestMessage, V1SignatureMessage},
     prelude::*,
 };
 
@@ -97,11 +97,11 @@ impl SessionAccepter {
 }
 
 #[async_trait]
-impl Terminable for SessionAccepter {
-    async fn terminate(&self) {
+impl Shutdown for SessionAccepter {
+    async fn shutdown(&self) {
         let mut task_acceptors = self.task_acceptors.lock().await;
         let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
-        join_all(task_acceptors.iter().map(|task| task.terminate())).await;
+        join_all(task_acceptors.iter().map(|task| task.shutdown())).await;
     }
 }
 
@@ -150,8 +150,8 @@ impl TaskAccepter {
 }
 
 #[async_trait]
-impl Terminable for TaskAccepter {
-    async fn terminate(&self) {
+impl Shutdown for TaskAccepter {
+    async fn shutdown(&self) {
         if let Some(join_handle) = self.join_handle.lock().await.take() {
             join_handle.abort();
             let _ = join_handle.fuse().await;
