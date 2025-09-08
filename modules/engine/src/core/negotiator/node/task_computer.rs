@@ -17,7 +17,6 @@ use omnius_core_base::sleeper::Sleeper;
 
 use crate::{
     base::{Shutdown, sync::FnCaller},
-    core::dht::Kadex,
     model::{AssetKey, NodeProfile},
     prelude::*,
 };
