@@ -134,7 +134,7 @@ impl TaskConnector {
             .iter()
             .filter(|(_, status)| status.session.handshake_type == SessionHandshakeType::Connected && status.exchange_type == ExchangeType::Publish)
             .count();
-        if session_count >= self.option.max_connected_session_for_publish {
+        if session_count >= self.option.max_connected_session_for_publish_count {
             return Ok(());
         }
 
@@ -156,7 +156,7 @@ impl TaskConnector {
             .iter()
             .filter(|(_, status)| status.session.handshake_type == SessionHandshakeType::Connected && status.exchange_type == ExchangeType::Subscribe)
             .count();
-        if session_count >= self.option.max_connected_session_for_subscribe {
+        if session_count >= self.option.max_connected_session_for_subscribe_count {
             return Ok(());
         }
 

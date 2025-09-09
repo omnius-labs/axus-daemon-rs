@@ -39,14 +39,16 @@ pub struct FileExchanger {
     file_subscriber: Arc<TokioMutex<Option<Arc<FileSubscriber>>>>,
 
     task_connectors: Arc<TokioMutex<Vec<Arc<TaskConnector>>>>,
+    task_acceptors: Arc<TokioMutex<Vec<Arc<TaskAccepter>>>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FileExchangerOption {
     #[allow(unused)]
     pub state_dir: PathBuf,
-    pub max_connected_session_for_publish: usize,
-    pub max_connected_session_for_subscribe: usize,
+    pub max_connected_session_for_publish_count: usize,
+    pub max_connected_session_for_subscribe_count: usize,
+    pub max_accepted_session_count: usize,
 }
 
 impl FileExchanger {
@@ -83,6 +85,7 @@ impl FileExchanger {
             file_subscriber: Arc::new(TokioMutex::new(None)),
 
             task_connectors: Arc::new(TokioMutex::new(Vec::new())),
+            task_acceptors: Arc::new(TokioMutex::new(Vec::new())),
         };
         v.start().await;
 
@@ -117,6 +120,19 @@ impl FileExchanger {
             )
             .await?;
             self.task_connectors.lock().await.push(task);
+        }
+
+        for _ in 0..3 {
+            let task = TaskAccepter::new(
+                self.sessions.clone(),
+                self.session_sender.clone(),
+                self.session_accepter.clone(),
+                self.clock.clone(),
+                self.sleeper.clone(),
+                self.option.clone(),
+            )
+            .await?;
+            self.task_acceptors.lock().await.push(task);
         }
 
         Ok(())
