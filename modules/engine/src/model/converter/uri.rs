@@ -3,6 +3,7 @@ use crc::{CRC_32_ISCSI, Crc};
 use tokio_util::bytes::Bytes;
 
 use omnius_core_rocketpack::RocketMessage;
+
 use crate::prelude::*;
 
 const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
@@ -33,7 +34,10 @@ impl UriConverter {
 
         match version {
             1 => Self::decode_v1(text),
-            _ => Err(Error::builder().kind(ErrorKind::UnsupportedVersion).message("unsupported version").build()),
+            _ => Err(Error::builder()
+                .kind(ErrorKind::UnsupportedVersion)
+                .message("unsupported version")
+                .build()),
         }
     }
 

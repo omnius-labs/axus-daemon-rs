@@ -31,7 +31,6 @@ hex = { workspace = true }
 urlencoding = { workspace = true }
 hyper = { workspace = true }
 tower = { workspace = true }
-thiserror = { workspace = true }
 jsonwebtoken = { workspace = true }
 validator = { workspace = true }
 headers = { workspace = true }

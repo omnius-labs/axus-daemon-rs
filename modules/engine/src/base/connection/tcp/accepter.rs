@@ -25,6 +25,7 @@ pub trait ConnectionTcpAccepter: Shutdown {
 
 pub struct ConnectionTcpAccepterImpl {
     listener: TcpListener,
+    #[allow(unused)]
     upnp_port_mapping: Option<UpnpPortMapping>,
 }
 
@@ -80,26 +81,27 @@ impl ConnectionTcpAccepter for ConnectionTcpAccepterImpl {
 
     async fn get_global_ip_addresses(&self) -> Result<Vec<IpAddr>> {
         let mut res: Vec<IpAddr> = Vec::new();
-        if let Ok(IpAddr::V4(ip4)) = local_ip_address::local_ip() {
-            if ip4.is_reachable() {
-                res.push(IpAddr::V4(ip4));
-            }
+        if let Ok(IpAddr::V4(ip4)) = local_ip_address::local_ip()
+            && ip4.is_reachable()
+        {
+            res.push(IpAddr::V4(ip4));
         }
-        if let Ok(IpAddr::V6(ip6)) = local_ip_address::local_ipv6() {
-            if ip6.is_reachable() {
-                res.push(IpAddr::V6(ip6));
-            }
+        if let Ok(IpAddr::V6(ip6)) = local_ip_address::local_ipv6()
+            && ip6.is_reachable()
+        {
+            res.push(IpAddr::V6(ip6));
         }
-        if let Some(upnp) = &self.upnp_port_mapping {
-            if upnp.external_ip.is_reachable() {
-                res.push(IpAddr::V4(upnp.external_ip));
-            }
+        if let Some(upnp) = &self.upnp_port_mapping
+            && upnp.external_ip.is_reachable()
+        {
+            res.push(IpAddr::V4(upnp.external_ip));
         }
 
         Ok(res)
     }
 }
 
+#[allow(unused)]
 struct UpnpPortMapping {
     port: u16,
     external_ip: Ipv4Addr,

@@ -42,6 +42,7 @@ impl NodeProfileFetcher for NodeProfileFetcherImpl {
     }
 }
 
+#[allow(unused)]
 pub struct NodeProfileFetcherMock {
     pub node_profiles: Vec<NodeProfile>,
 }

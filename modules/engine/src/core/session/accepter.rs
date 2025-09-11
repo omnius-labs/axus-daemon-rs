@@ -27,7 +27,7 @@ use super::{
 };
 
 pub struct SessionAccepter {
-    tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
+    tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
     signer: Arc<OmniSigner>,
     random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
     sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -38,7 +38,7 @@ pub struct SessionAccepter {
 
 impl SessionAccepter {
     pub async fn new(
-        tcp_connector: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
+        tcp_accepter: Arc<dyn ConnectionTcpAccepter + Send + Sync>,
         signer: Arc<OmniSigner>,
         random_bytes_provider: Arc<Mutex<dyn RandomBytesProvider + Send + Sync>>,
         sleeper: Arc<dyn Sleeper + Send + Sync>,
@@ -53,7 +53,7 @@ impl SessionAccepter {
         }
 
         let result = Self {
-            tcp_connector,
+            tcp_accepter,
             signer,
             random_bytes_provider,
             sleeper,
@@ -70,7 +70,7 @@ impl SessionAccepter {
         for _ in 0..3 {
             let task = TaskAccepter::new(
                 self.senders.clone(),
-                self.tcp_connector.clone(),
+                self.tcp_accepter.clone(),
                 self.signer.clone(),
                 self.random_bytes_provider.clone(),
                 self.sleeper.clone(),
@@ -102,6 +102,8 @@ impl Shutdown for SessionAccepter {
         let mut task_acceptors = self.task_acceptors.lock().await;
         let task_acceptors: Vec<TaskAccepter> = task_acceptors.drain(..).collect();
         join_all(task_acceptors.iter().map(|task| task.shutdown())).await;
+
+        self.tcp_accepter.shutdown().await;
     }
 }
 

@@ -26,7 +26,6 @@ sqlx = { workspace = true }
 ring = { workspace = true }
 hex = { workspace = true }
 urlencoding = { workspace = true }
-thiserror = { workspace = true }
 once_cell = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }

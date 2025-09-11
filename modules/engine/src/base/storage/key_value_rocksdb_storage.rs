@@ -114,7 +114,7 @@ impl KeyValueRocksdbStorage {
     }
 
     #[allow(unused)]
-    pub fn get_keys(&self) -> Result<BlobStorageKeyIterator> {
+    pub fn get_keys(&self) -> Result<BlobStorageKeyIterator<'_>> {
         let cf_names = self.db.cf_handle("names").expect("missing CF");
         let mut iter = self.db.raw_iterator_cf(&cf_names);
         iter.seek_to_first();
@@ -404,13 +404,13 @@ impl KeyValueRocksdbStorage {
 
             let mut batch = rocksdb::WriteBatchWithTransaction::default();
 
-            while let Some(name) = iter.key() {
-                if let Some(id) = iter.value() {
-                    if !(func)(name) {
-                        batch.delete_cf(&cf_names, name);
-                        batch.delete_cf(&cf_metas, id);
-                        batch.delete_cf(&cf_blocks, id);
-                    }
+            while let Some(name) = iter.key()
+                && let Some(id) = iter.value()
+            {
+                if !(func)(name) {
+                    batch.delete_cf(&cf_names, name);
+                    batch.delete_cf(&cf_metas, id);
+                    batch.delete_cf(&cf_blocks, id);
                 }
                 iter.next();
             }

@@ -24,6 +24,16 @@ pub struct RpcServer;
 
 impl RpcServer {
     pub async fn serve(state: AppState) -> Result<()> {
+        tokio::select! {
+            _ = Self::run(&state) => {},
+            _ = tokio::signal::ctrl_c() => {
+                Self::shutdown(&state).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn run(state: &AppState) -> Result<()> {
         let tcp_listener = TcpListener::bind(state.conf.listen_addr.to_string()).await?;
 
         loop {
@@ -40,9 +50,13 @@ impl RpcServer {
             };
 
             match function_id {
-                FunctionId::Health => remoting_listener.listen_unary(async |p| features::health(&state, p).await).await?,
+                FunctionId::Health => remoting_listener.listen_unary(async |p| features::health(state, p).await).await?,
                 _ => warn!("not supported"),
             }
         }
+    }
+
+    async fn shutdown(_state: &AppState) -> Result<()> {
+        Ok(())
     }
 }
