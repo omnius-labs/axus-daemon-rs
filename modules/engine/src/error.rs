@@ -108,9 +108,8 @@ pub enum ErrorKind {
     UnsupportedType,
     Reject,
     NotFound,
-    AlreadyConnected,
-    RateLimitExceeded,
     AlreadyExists,
+    RateLimitExceeded,
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -134,9 +133,8 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::UnsupportedType => write!(fmt, "unsupported type"),
             ErrorKind::Reject => write!(fmt, "reject"),
             ErrorKind::NotFound => write!(fmt, "not found"),
-            ErrorKind::AlreadyConnected => write!(fmt, "already connected"),
-            ErrorKind::RateLimitExceeded => write!(fmt, "rate limit exceeded"),
             ErrorKind::AlreadyExists => write!(fmt, "already exists"),
+            ErrorKind::RateLimitExceeded => write!(fmt, "rate limit exceeded"),
         }
     }
 }

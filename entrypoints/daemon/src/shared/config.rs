@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -7,11 +7,13 @@ use crate::prelude::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
     pub listen_addr: String,
+    pub state_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct AppConfigToml {
     pub listen_addr: String,
+    pub state_dir: String,
 }
 
 impl AppConfig {
@@ -26,6 +28,7 @@ impl AppConfig {
 
         Ok(AppConfig {
             listen_addr: toml.listen_addr,
+            state_dir: PathBuf::from(toml.state_dir),
         })
     }
 }

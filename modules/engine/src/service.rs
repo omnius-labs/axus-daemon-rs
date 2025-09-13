@@ -11,8 +11,11 @@ use omnius_core_base::{
 use omnius_core_omnikit::model::{OmniAddr, OmniSignType, OmniSigner};
 
 use crate::{
-    base::connection::{
-        ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+    base::{
+        Shutdown,
+        connection::{
+            ConnectionTcpAccepter, ConnectionTcpAccepterImpl, ConnectionTcpConnector, ConnectionTcpConnectorImpl, TcpProxyOption, TcpProxyType,
+        },
     },
     core::{
         negotiator::{NodeFinder, NodeFinderOption, NodeFinderRepo, NodeProfileFetcherImpl},
@@ -22,15 +25,14 @@ use crate::{
 };
 
 #[allow(unused)]
-struct AxusEngine {
+pub struct AxusEngine {
     node_finder: NodeFinder,
 }
 
 impl AxusEngine {
-    #[allow(unused)]
-    pub async fn new() -> Result<Self> {
+    pub async fn new<S: AsRef<Path>, T: AsRef<Path>>(state_dir: S, _temp_dir: T) -> Result<Self> {
         Ok(AxusEngine {
-            node_finder: Self::create_node_finder(Path::new("aaa"), 6666).await?,
+            node_finder: Self::create_node_finder(state_dir.as_ref(), 6666).await?,
         })
     }
 
@@ -80,5 +82,9 @@ impl AxusEngine {
         .await?;
 
         Ok(result)
+    }
+
+    pub async fn shutdown(&self) {
+        self.node_finder.shutdown().await;
     }
 }

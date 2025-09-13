@@ -45,8 +45,14 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["full"] }
 tokio-stream = "0.1.17"
 tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
+tracing = { version = "0.1.41", features = ["valuable"] }
+tracing-subscriber = { version = "0.3.19", features = [
+  "fmt",
+  "json",
+  "valuable",
+  "env-filter",
+] }
+valuable = { version = "0.1.1", features = ["derive"] }
 uuid = { version = "1.18.0", features = ["serde", "v4"] }
 sqlx = { version = "0.8.6", features = [
   "postgres",

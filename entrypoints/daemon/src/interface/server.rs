@@ -27,14 +27,19 @@ impl RpcServer {
         tokio::select! {
             _ = Self::run(&state) => {},
             _ = tokio::signal::ctrl_c() => {
-                Self::shutdown(&state).await?;
+               Self::shutdown(&state).await;
             }
         }
         Ok(())
     }
 
+    async fn shutdown(state: &AppState) {
+        state.engine.shutdown().await;
+    }
+
     async fn run(state: &AppState) -> Result<()> {
-        let tcp_listener = TcpListener::bind(state.conf.listen_addr.to_string()).await?;
+        let tcp_listener = TcpListener::bind(state.conf.listen_addr.clone()).await?;
+        info!(addr = state.conf.listen_addr, "listen");
 
         loop {
             let (tcp_stream, _) = tcp_listener.accept().await?;
@@ -54,9 +59,5 @@ impl RpcServer {
                 _ => warn!("not supported"),
             }
         }
-    }
-
-    async fn shutdown(_state: &AppState) -> Result<()> {
-        Ok(())
     }
 }

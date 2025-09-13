@@ -1,6 +1,8 @@
+use valuable::Valuable;
+
 use crate::prelude::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Valuable)]
 pub struct AppInfo {
     pub app_name: String,
     pub git_tag: String,

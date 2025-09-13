@@ -1,6 +1,7 @@
 /target
 /tmp
 /bin
+/state
 
 # Visual Studio Code
 .vscode/*

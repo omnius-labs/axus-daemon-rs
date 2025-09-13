@@ -98,8 +98,9 @@ pub enum ErrorKind {
     HttpClientError,
     CryptoError,
     UpnpError,
-    UnexpectedError,
     NetworkError,
+    TaskError,
+    UnexpectedError,
 
     InvalidFormat,
     EndOfStream,
@@ -108,6 +109,7 @@ pub enum ErrorKind {
     Reject,
     NotFound,
     AlreadyConnected,
+    AlreadyExists,
     RateLimitExceeded,
 }
 
@@ -123,6 +125,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::CryptoError => write!(fmt, "crypto error"),
             ErrorKind::UpnpError => write!(fmt, "upnp error"),
             ErrorKind::NetworkError => write!(fmt, "network error"),
+            ErrorKind::TaskError => write!(fmt, "task error"),
             ErrorKind::UnexpectedError => write!(fmt, "unexpected error"),
 
             ErrorKind::InvalidFormat => write!(fmt, "invalid format"),
@@ -132,6 +135,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::Reject => write!(fmt, "reject"),
             ErrorKind::NotFound => write!(fmt, "not found"),
             ErrorKind::AlreadyConnected => write!(fmt, "already connected"),
+            ErrorKind::AlreadyExists => write!(fmt, "already Exists"),
             ErrorKind::RateLimitExceeded => write!(fmt, "rate limit exceeded"),
         }
     }
@@ -209,31 +213,6 @@ impl From<base64::DecodeError> for Error {
     }
 }
 
-impl From<omnius_core_rocketpack::Error> for Error {
-    fn from(e: omnius_core_rocketpack::Error) -> Error {
-        Error::builder()
-            .kind(ErrorKind::SerdeError)
-            .message("rocket pack error")
-            .source(e)
-            .build()
-    }
-}
-
-impl From<omnius_core_omnikit::Error> for Error {
-    fn from(e: omnius_core_omnikit::Error) -> Self {
-        match e.kind() {
-            omnius_core_omnikit::ErrorKind::Unknown => Error::builder().kind(ErrorKind::Unknown).source(e).build(),
-            omnius_core_omnikit::ErrorKind::SerdeError => Error::builder().kind(ErrorKind::SerdeError).source(e).build(),
-            omnius_core_omnikit::ErrorKind::IoError => Error::builder().kind(ErrorKind::IoError).source(e).build(),
-            omnius_core_omnikit::ErrorKind::UnexpectedError => Error::builder().kind(ErrorKind::UnexpectedError).source(e).build(),
-            omnius_core_omnikit::ErrorKind::InvalidFormat => Error::builder().kind(ErrorKind::InvalidFormat).source(e).build(),
-            omnius_core_omnikit::ErrorKind::EndOfStream => Error::builder().kind(ErrorKind::EndOfStream).source(e).build(),
-            omnius_core_omnikit::ErrorKind::UnsupportedVersion => Error::builder().kind(ErrorKind::UnsupportedVersion).source(e).build(),
-            omnius_core_omnikit::ErrorKind::UnsupportedType => Error::builder().kind(ErrorKind::UnsupportedType).source(e).build(),
-        }
-    }
-}
-
 impl From<std::num::TryFromIntError> for Error {
     fn from(e: std::num::TryFromIntError) -> Self {
         Error::builder()
@@ -261,5 +240,56 @@ impl From<toml::de::Error> for Error {
             .message("failed to parse toml file")
             .source(e)
             .build()
+    }
+}
+
+impl From<omnius_core_rocketpack::Error> for Error {
+    fn from(e: omnius_core_rocketpack::Error) -> Error {
+        Error::builder()
+            .kind(ErrorKind::SerdeError)
+            .message("rocket pack error")
+            .source(e)
+            .build()
+    }
+}
+
+impl From<omnius_core_omnikit::Error> for Error {
+    fn from(e: omnius_core_omnikit::Error) -> Self {
+        match e.kind() {
+            omnius_core_omnikit::ErrorKind::Unknown => Error::builder().kind(ErrorKind::Unknown).source(e).build(),
+            omnius_core_omnikit::ErrorKind::SerdeError => Error::builder().kind(ErrorKind::SerdeError).source(e).build(),
+            omnius_core_omnikit::ErrorKind::IoError => Error::builder().kind(ErrorKind::IoError).source(e).build(),
+            omnius_core_omnikit::ErrorKind::UnexpectedError => Error::builder().kind(ErrorKind::UnexpectedError).source(e).build(),
+            omnius_core_omnikit::ErrorKind::InvalidFormat => Error::builder().kind(ErrorKind::InvalidFormat).source(e).build(),
+            omnius_core_omnikit::ErrorKind::EndOfStream => Error::builder().kind(ErrorKind::EndOfStream).source(e).build(),
+            omnius_core_omnikit::ErrorKind::UnsupportedVersion => Error::builder().kind(ErrorKind::UnsupportedVersion).source(e).build(),
+            omnius_core_omnikit::ErrorKind::UnsupportedType => Error::builder().kind(ErrorKind::UnsupportedType).source(e).build(),
+        }
+    }
+}
+
+impl From<omnius_axus_engine::Error> for Error {
+    fn from(e: omnius_axus_engine::Error) -> Self {
+        match e.kind() {
+            omnius_axus_engine::ErrorKind::Unknown => Error::builder().kind(ErrorKind::Unknown).source(e).build(),
+            omnius_axus_engine::ErrorKind::IoError => Error::builder().kind(ErrorKind::IoError).source(e).build(),
+            omnius_axus_engine::ErrorKind::TimeError => Error::builder().kind(ErrorKind::TimeError).source(e).build(),
+            omnius_axus_engine::ErrorKind::SerdeError => Error::builder().kind(ErrorKind::SerdeError).source(e).build(),
+            omnius_axus_engine::ErrorKind::DatabaseError => Error::builder().kind(ErrorKind::DatabaseError).source(e).build(),
+            omnius_axus_engine::ErrorKind::HttpClientError => Error::builder().kind(ErrorKind::HttpClientError).source(e).build(),
+            omnius_axus_engine::ErrorKind::CryptoError => Error::builder().kind(ErrorKind::CryptoError).source(e).build(),
+            omnius_axus_engine::ErrorKind::UpnpError => Error::builder().kind(ErrorKind::UpnpError).source(e).build(),
+            omnius_axus_engine::ErrorKind::NetworkError => Error::builder().kind(ErrorKind::NetworkError).source(e).build(),
+            omnius_axus_engine::ErrorKind::TaskError => Error::builder().kind(ErrorKind::TaskError).source(e).build(),
+            omnius_axus_engine::ErrorKind::UnexpectedError => Error::builder().kind(ErrorKind::UnexpectedError).source(e).build(),
+            omnius_axus_engine::ErrorKind::InvalidFormat => Error::builder().kind(ErrorKind::InvalidFormat).source(e).build(),
+            omnius_axus_engine::ErrorKind::EndOfStream => Error::builder().kind(ErrorKind::EndOfStream).source(e).build(),
+            omnius_axus_engine::ErrorKind::UnsupportedVersion => Error::builder().kind(ErrorKind::UnsupportedVersion).source(e).build(),
+            omnius_axus_engine::ErrorKind::UnsupportedType => Error::builder().kind(ErrorKind::UnsupportedType).source(e).build(),
+            omnius_axus_engine::ErrorKind::Reject => Error::builder().kind(ErrorKind::Reject).source(e).build(),
+            omnius_axus_engine::ErrorKind::NotFound => Error::builder().kind(ErrorKind::NotFound).source(e).build(),
+            omnius_axus_engine::ErrorKind::AlreadyExists => Error::builder().kind(ErrorKind::AlreadyExists).source(e).build(),
+            omnius_axus_engine::ErrorKind::RateLimitExceeded => Error::builder().kind(ErrorKind::RateLimitExceeded).source(e).build(),
+        }
     }
 }

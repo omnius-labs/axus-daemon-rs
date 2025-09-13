@@ -121,10 +121,7 @@ impl TaskCommunicator {
         {
             let mut sessions = self.sessions.write().await;
             if sessions.contains_key(&other_node_profile.id) {
-                return Err(Error::builder()
-                    .kind(ErrorKind::AlreadyConnected)
-                    .message("Session already exists")
-                    .build());
+                return Err(Error::builder().kind(ErrorKind::AlreadyExists).message("Session already exists").build());
             }
             sessions.insert(other_node_profile.id.clone(), status.clone());
         }
